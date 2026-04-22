@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sök – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav><a href="/">Tillbaka till portalen</a></nav>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Sök i krisinformation</h2>
+    <form class="sok-form" method="get" action="/sok">
+      <input type="search" name="q" value="<%= q %>" placeholder="Sök på t.ex. hemberedskap, vatten, strömavbrott…" autofocus />
+      <button type="submit">Sök</button>
+    </form>
+
+    <% if (q) { %>
+      <div class="sok-meta">
+        <% if (hits.length > 0) { %>
+          Visar <%= hits.length %> av <%= total %> träffar för <strong>"<%= q %>"</strong>
+        <% } else { %>
+          Inga träffar för <strong>"<%= q %>"</strong>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (hits.length > 0) { %>
+    <section class="panel">
+      <ul class="hits">
+        <% hits.forEach(h => { %>
+          <li>
+            <a class="hit" href="/innehall/<%= h.path %>">
+              <div class="hit-title"><%= h.title %></div>
+              <div class="hit-meta"><%= h.book %> · <%= h.info %></div>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+  <% } else if (!q) { %>
+    <section class="panel panel-compact">
+      <div>Skriv en fråga och tryck Sök. All information finns lokalt.</div>
+    </section>
+  <% } %>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+</body>
+</html>

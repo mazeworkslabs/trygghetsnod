@@ -1,0 +1,49 @@
+# Hemligheter
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# NOMAD upstream — klonas separat, är inte vår kod
+project-nomad/
+
+# Marknadsföringssajt — eget repo
+krisnod-landing/
+
+# Storage — stora binärfiler, kommunkopplad data, distribueras separat
+storage/
+
+# Drift-data — runtime, ska aldrig commitas
+mysql/
+redis/
+
+# Levande lägesuppdateringar — skrivs av platsansvarig, inte produktdata
+kommuner/*/update.json
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+logs/
+*.log
+
+# Stora filer som ändå inte hör hemma i ett kodrepo
+*.zim
+*.pmtiles
+*.warc.gz

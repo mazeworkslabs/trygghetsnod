@@ -1,0 +1,132 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "kommun": "Arvika",
+    "note": "Demo-data. Trygghetspunkter enligt fiktiv krisledningsplan. Koordinater approximerade.",
+    "generated": "2026-04-17"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "trygghetspunkt",
+        "namn": "Arvika brandstation",
+        "adress": "Ringvägen 3, Arvika",
+        "kapacitet": "80 personer",
+        "reservkraft": "Ja, 72 tim",
+        "anmarkning": "Kommunikationsradio (Rakel), vattenuttag"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5827, 59.6553] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "trygghetspunkt",
+        "namn": "Jössefors skola",
+        "adress": "Skolvägen 4, Jössefors",
+        "kapacitet": "150 personer",
+        "reservkraft": "Ja, 24 tim",
+        "anmarkning": "Kommunikationsradio (Rakel), vattenuttag"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5290, 59.6440] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "trygghetspunkt",
+        "namn": "Klässbols bygdegård",
+        "adress": "Kyrkvägen 8, Klässbol",
+        "kapacitet": "60 personer",
+        "reservkraft": "Delvis (aggregat kan kopplas in)",
+        "anmarkning": "Kommunikationsradio (Rakel)"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.4400, 59.5700] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "trygghetspunkt",
+        "namn": "Edane församlingshem",
+        "adress": "Kyrkogatan 2, Edane",
+        "kapacitet": "40 personer",
+        "reservkraft": "Nej",
+        "anmarkning": "Kommunikationsradio (Rakel)"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.7800, 59.7700] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "trygghetspunkt",
+        "namn": "Sulvik skola",
+        "adress": "Skolgatan 10, Sulvik",
+        "kapacitet": "70 personer",
+        "reservkraft": "Ja, 12 tim",
+        "anmarkning": "Kommunikationsradio (Rakel)"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.7200, 59.6100] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "vardcentral",
+        "namn": "Vårdcentralen Arvika",
+        "adress": "Storgatan 17, Arvika",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5870, 59.6540] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "apotek",
+        "namn": "Apotek Hjärtat Arvika",
+        "adress": "Kyrkogatan 15, Arvika",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5890, 59.6545] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "apotek",
+        "namn": "Apoteket Lejonet Jössefors",
+        "adress": "Skolvägen 10, Jössefors",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5310, 59.6435] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "skyddsrum",
+        "namn": "Skyddsrum Centrum",
+        "adress": "Trädgårdsgatan 3, Arvika",
+        "kapacitet": "180 personer",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5905, 59.6555] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "skyddsrum",
+        "namn": "Skyddsrum Styckåsen",
+        "adress": "Storgatan 42, Arvika",
+        "kapacitet": "120 personer",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5805, 59.6580] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kategori": "brandstation",
+        "namn": "Bergslagens Räddningstjänst, Arvika",
+        "adress": "Ringvägen 3, Arvika",
+        "anmarkning": "Demo-data"
+      },
+      "geometry": { "type": "Point", "coordinates": [12.5827, 59.6553] }
+    }
+  ]
+}

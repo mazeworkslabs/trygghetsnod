@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<title><%= config.kommun %> – Lägesuppdatering</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body class="print">
+<article class="a4">
+  <header>
+    <div class="print-kommun"><%= config.kommun %></div>
+    <div class="print-plats">Trygghetspunkt · <%= config.plats %></div>
+  </header>
+
+  <section class="print-severity sev-<%= update.severity %>">
+    <%= sev.label %>
+  </section>
+
+  <h1><%= update.title %></h1>
+
+  <div class="print-body"><%= update.body %></div>
+
+  <footer>
+    <div class="print-meta">
+      Uppdaterat <%= formatDate(update.updated_at) %> · <%= update.author %>
+    </div>
+    <div class="print-wifi">
+      <div>Lokalt wifi: <strong><%= config.wifi_ssid %></strong></div>
+      <div>Mer information: anslut och öppna valfri sida.</div>
+    </div>
+    <img class="print-qr" src="/qr.png" alt="QR-kod för wifi" />
+    <div class="print-112">Vid akut fara: ring 112</div>
+  </footer>
+</article>
+
+<div class="no-print">
+  <button onclick="window.print()">Skriv ut</button>
+  <a href="/">Tillbaka till portalen</a>
+</div>
+</body>
+</html>

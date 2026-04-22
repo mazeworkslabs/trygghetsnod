@@ -1,0 +1,19 @@
+{
+  "name": "trygghetsnod-portal",
+  "version": "0.1.0",
+  "description": "Krisportal för kommunal trygghetspunkt",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "maplibre-gl": "^5.23.0",
+    "pmtiles": "^4.4.1",
+    "protomaps-themes-base": "^4.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

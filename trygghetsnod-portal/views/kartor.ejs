@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kartor – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css" />
+<style>
+  body.kartor { display: flex; flex-direction: column; height: 100vh; margin: 0; }
+  body.kartor main { padding: 0; max-width: none; width: 100%; margin: 0; flex: 1 1 auto; position: relative; min-height: 0; }
+  #map { position: absolute; inset: 0; }
+  .map-overlay {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(255,255,255,0.95);
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    font-size: 0.9rem;
+    z-index: 10;
+    max-width: 320px;
+  }
+  .map-overlay h2 { margin: 0 0 0.25rem; font-family: var(--serif); font-size: 1rem; font-weight: 500; }
+  .map-overlay p { margin: 0 0 0.75rem; color: var(--ink-soft); font-size: 0.85rem; }
+  .map-legend { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+  .map-legend li { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0; }
+  .map-legend .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #ccc; }
+  .dot-trygghetspunkt { background: #d54a00; }
+  .dot-skyddsrum { background: #2c3e50; }
+  .dot-vardcentral { background: #2e7d32; }
+  .dot-apotek { background: #43a047; }
+  .dot-brandstation { background: #c62828; }
+</style>
+</head>
+<body class="kartor">
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav>
+    <a href="/">Tillbaka till portalen</a>
+  </nav>
+</header>
+
+<main>
+  <div class="map-overlay">
+    <h2>Kartor – <%= config.kommun %></h2>
+    <p>Trygghetspunkter, vårdinrättningar, skyddsrum. Klicka på en markör för detaljer.</p>
+    <ul class="map-legend">
+      <li><span class="dot dot-trygghetspunkt"></span> Trygghetspunkt</li>
+      <li><span class="dot dot-skyddsrum"></span> Skyddsrum</li>
+      <li><span class="dot dot-vardcentral"></span> Vårdcentral</li>
+      <li><span class="dot dot-apotek"></span> Apotek</li>
+      <li><span class="dot dot-brandstation"></span> Brandstation</li>
+    </ul>
+  </div>
+  <div id="map"></div>
+</main>
+
+<script src="/vendor/pmtiles/pmtiles.js"></script>
+<script src="/vendor/maplibre/maplibre-gl.js"></script>
+<script src="/vendor/protomaps/protomaps-themes-base.js"></script>
+<script>
+(function() {
+  const protocol = new pmtiles.Protocol({ metadata: true })
+  maplibregl.addProtocol('pmtiles', protocol.tilev4)
+
+  const pmtilesUrl = window.location.origin + '/tiles/sweden_20260417.pmtiles'
+  const p = new pmtiles.PMTiles(pmtilesUrl)
+  protocol.add(p)
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e8e6df' } }] },
+    center: <%- JSON.stringify(config.map_center || [12.59, 59.65]) %>,
+    zoom: <%= config.map_zoom || 10 %>,
+    minZoom: 5,
+    maxZoom: 15,
+    maxBounds: [[2, 52], [32, 72]],
+  })
+  window._map = map
+  map.on('error', (e) => console.error('[map error]', e.error?.message || e))
+
+  map.on('load', () => {
+    map.addSource('protomaps', {
+      type: 'vector',
+      tiles: ['pmtiles://' + pmtilesUrl + '/{z}/{x}/{y}'],
+      minzoom: 0,
+      maxzoom: 15,
+      bounds: [10.5, 55.2, 24.2, 69.1],
+      attribution: '<a href="https://github.com/protomaps/basemaps">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    })
+    const theme = protomaps_themes_base.namedTheme('light')
+    const layers = protomaps_themes_base.layers('protomaps', theme, { lang: 'sv' })
+    for (const l of layers) {
+      if (l.type === 'symbol') continue
+      map.addLayer(l)
+    }
+
+    map.addSource('poi', { type: 'geojson', data: '/geo/poi.geojson' })
+    map.addLayer({
+      id: 'poi-circle',
+      type: 'circle',
+      source: 'poi',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 8, 13, 14],
+        'circle-color': [
+          'match', ['get', 'kategori'],
+          'trygghetspunkt', '#d54a00',
+          'skyddsrum', '#2c3e50',
+          'vardcentral', '#2e7d32',
+          'apotek', '#43a047',
+          'brandstation', '#c62828',
+          '#555',
+        ],
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.95,
+      },
+    })
+
+    map.on('click', 'poi-circle', (e) => {
+      const f = e.features[0]
+      const p = f.properties
+      const rows = [
+        `<div style="font-weight:600;font-size:1rem;margin-bottom:0.25rem;">${p.namn}</div>`,
+        `<div style="color:#555;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${p.kategori}</div>`,
+        p.adress ? `<div><strong>Adress:</strong> ${p.adress}</div>` : '',
+        p.kapacitet ? `<div><strong>Kapacitet:</strong> ${p.kapacitet}</div>` : '',
+        p.reservkraft ? `<div><strong>Reservkraft:</strong> ${p.reservkraft}</div>` : '',
+        p.anmarkning ? `<div style="margin-top:0.5rem;font-size:0.8rem;color:#666;">${p.anmarkning}</div>` : '',
+      ].filter(Boolean).join('')
+      new maplibregl.Popup({ maxWidth: '300px' })
+        .setLngLat(f.geometry.coordinates)
+        .setHTML(rows)
+        .addTo(map)
+    })
+
+    map.on('mouseenter', 'poi-circle', () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', 'poi-circle', () => { map.getCanvas().style.cursor = '' })
+  })
+
+  map.addControl(new maplibregl.NavigationControl(), 'top-right')
+  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
+})()
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title><%= config.kommun %> – Trygghetspunkt <%= config.plats %></title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+</header>
+
+<main>
+  <section class="update sev-<%= update.severity %>">
+    <div class="sev-label"><%= sev.label %></div>
+    <h1><%= update.title %></h1>
+    <div class="update-body"><%= update.body %></div>
+    <div class="update-meta">
+      Uppdaterat <%= formatDate(update.updated_at) %> · <%= update.author %>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Information och verktyg</h2>
+    <div class="cards">
+      <a class="card" href="/sok">
+        <h3>Sök</h3>
+        <p>Hitta information i allt lokalt innehåll.</p>
+      </a>
+      <a class="card" href="<%= config.kommun_zim_path %>">
+        <h3><%= config.kommun %></h3>
+        <p>Kommunens hemsida – offline.</p>
+      </a>
+      <a class="card" href="/innehall/krisinformation_sv_2026-04/www.krisinformation.se/">
+        <h3>Krisinformation.se</h3>
+        <p>Samlad svensk krisinformation – offline.</p>
+      </a>
+      <a class="card" href="/kartor">
+        <h3>Kartor</h3>
+        <p>Offline-karta med Arvikas trygghetspunkter.</p>
+      </a>
+      <a class="card" href="/innehall/wikipedia_sv_top/A/index">
+        <h3>Wikipedia</h3>
+        <p>Svenska Wikipedia – offline.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="panel panel-compact">
+    <div>Ingen internet? Det är normalt här. All information nedan är lokal.</div>
+    <div><a href="/print">Skriv ut aktuell lägesuppdatering (A4)</a></div>
+  </section>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+</body>
+</html>

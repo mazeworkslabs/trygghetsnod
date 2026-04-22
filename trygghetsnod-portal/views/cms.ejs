@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CMS – <%= config.kommun %> trygghetspunkt</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body class="cms">
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod CMS</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav><a href="/">Visa portal</a> · <a href="/print">Utskriftsvy</a></nav>
+</header>
+
+<main class="cms-main">
+  <% if (saved) { %>
+    <div class="saved-banner">Lägesuppdatering sparad.</div>
+  <% } %>
+
+  <form method="post" action="/cms" class="cms-form">
+    <label>
+      <span>Rubrik</span>
+      <input name="title" type="text" required value="<%= update.title %>" />
+    </label>
+
+    <label>
+      <span>Läge</span>
+      <select name="severity">
+        <% Object.entries(severities).forEach(([key, s]) => { %>
+          <option value="<%= key %>" <%= update.severity === key ? 'selected' : '' %>><%= s.label %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>
+      <span>Text</span>
+      <textarea name="body" rows="10" required><%= update.body %></textarea>
+    </label>
+
+    <label>
+      <span>Skrivet av</span>
+      <input name="author" type="text" value="<%= update.author %>" />
+    </label>
+
+    <div class="form-actions">
+      <button type="submit">Spara och publicera</button>
+    </div>
+  </form>
+
+  <section class="cms-hint">
+    <h3>Lägen</h3>
+    <ul>
+      <li><strong>Information</strong> – normal drift, öppettider, allmän info.</li>
+      <li><strong>Varning</strong> – pågående händelse, håll er uppdaterade.</li>
+      <li><strong>Nödläge</strong> – akut läge, följ instruktionerna.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
