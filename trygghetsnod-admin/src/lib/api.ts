@@ -97,6 +97,7 @@ export interface ForumMessage {
   id: number
   group_id: number
   author_name: string
+  author_role?: 'medborgare' | 'frg'
   body: string
   created_at: string
   deleted_at: string | null
@@ -168,6 +169,16 @@ export const api = {
     }),
   deleteArticle: (slug: string) =>
     request<{ ok: true }>(`/api/admin/articles/${slug}`, { method: 'DELETE' }),
+  uploadArticleImage: async (file: File) => {
+    const fd = new FormData()
+    fd.append('image', file)
+    const res = await fetch('/api/admin/articles/images', { method: 'POST', body: fd })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`${res.status}: ${text || 'uppladdning misslyckades'}`)
+    }
+    return res.json() as Promise<{ url: string; filename: string; size: number }>
+  },
   forumGroups: () => request<{ groups: ForumGroup[] }>('/api/admin/forum/groups'),
   forumMessages: (groupId: number) =>
     request<{ messages: ForumMessage[] }>(`/api/forum/groups/${groupId}/messages`),

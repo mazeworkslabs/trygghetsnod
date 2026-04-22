@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import QRCode from 'qrcode'
 import matter from 'gray-matter'
 import { marked } from 'marked'
+import multer from 'multer'
 import cookieParser from 'cookie-parser'
 import {
   createForumPool,
@@ -137,13 +138,16 @@ const formatDate = (iso) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-const localOnly = (req, res, next) => {
+const isLocalRequest = (req) => {
   const ip = req.ip || req.socket?.remoteAddress || ''
-  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
-  if (!isLocal) {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+}
+
+const localOnly = (req, res, next) => {
+  if (!isLocalRequest(req)) {
     return res.status(403).type('text/plain').send(
-      'CMS är endast tillgängligt från enheten själv (localhost).\n' +
-      'Använd http://localhost:' + PORT + '/cms direkt på Trygghetsnod-enheten.'
+      'Admin är endast tillgängligt från enheten själv (localhost).\n' +
+      'Använd http://localhost:' + PORT + '/admin direkt på Trygghetsnod-enheten.'
     )
   }
   next()
@@ -273,6 +277,7 @@ app.put('/api/admin/update', localOnly, (req, res) => {
 // Frontmatter: title, author, date, published, summary
 
 const articlesDir = () => join(KOMMUN_DIR, 'artiklar')
+const articlesMediaDir = () => join(articlesDir(), 'media')
 
 const slugify = (s) =>
   String(s || '')
@@ -422,8 +427,18 @@ app.put('/api/admin/articles/:slug', localOnly, (req, res) => {
   const existing = readArticleFile(req.params.slug)
   if (!existing) return res.status(404).json({ error: 'hittades inte' })
   const body = req.body || {}
+  let targetSlug = existing.slug
+  if (body.slug && body.slug !== existing.slug) {
+    const wanted = slugify(body.slug)
+    if (wanted !== existing.slug) {
+      if (existsSync(join(articlesDir(), `${wanted}.md`))) {
+        return res.status(409).json({ error: `Slug "${wanted}" är redan upptagen.` })
+      }
+      targetSlug = wanted
+    }
+  }
   const article = {
-    slug: existing.slug,
+    slug: targetSlug,
     title: String(body.title ?? existing.title).trim(),
     author: String(body.author ?? existing.author).trim() || 'Platsansvarig',
     date: String(body.date ?? existing.date).trim(),
@@ -432,12 +447,48 @@ app.put('/api/admin/articles/:slug', localOnly, (req, res) => {
     body: String(body.body ?? existing.body),
   }
   writeArticle(article)
+  if (targetSlug !== existing.slug) {
+    // Ta bort den gamla filen efter att den nya är skriven
+    deleteArticle(existing.slug)
+  }
   appendLoggbok({
     type: 'artikel',
     title: `Artikel uppdaterad: ${article.title}`,
     author: article.author,
   })
   res.json(article)
+})
+
+const articleImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      mkdirSync(articlesMediaDir(), { recursive: true })
+      cb(null, articlesMediaDir())
+    },
+    filename: (_req, file, cb) => {
+      const ext = (file.originalname.match(/\.(jpe?g|png|gif|webp|svg)$/i) || ['.bin'])[0].toLowerCase()
+      const base = slugify(file.originalname.replace(/\.[^.]+$/, '')) || 'bild'
+      const stamp = Date.now().toString(36)
+      cb(null, `${base}-${stamp}${ext}`)
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^(image\/jpeg|image\/png|image\/gif|image\/webp|image\/svg\+xml)$/.test(file.mimetype)
+    cb(ok ? null : new Error('Endast bilder (jpg, png, gif, webp, svg) tillåtna'), ok)
+  },
+})
+
+app.post('/api/admin/articles/images', localOnly, articleImageUpload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Ingen fil' })
+  const url = `/artikel-media/${req.file.filename}`
+  res.json({ url, filename: req.file.filename, size: req.file.size })
+})
+
+app.use('/artikel-media', (req, res, next) => {
+  try {
+    express.static(articlesMediaDir(), { fallthrough: false })(req, res, next)
+  } catch { next() }
 })
 
 app.delete('/api/admin/articles/:slug', localOnly, (req, res) => {
@@ -612,6 +663,7 @@ app.post('/api/forum/groups/:id/messages', async (req, res) => {
     const msg = await postMessage(forumPool, {
       groupId: Number(req.params.id),
       authorName,
+      authorRole: isLocalRequest(req) ? 'frg' : 'medborgare',
       body: req.body?.body,
     })
     res.json(msg)

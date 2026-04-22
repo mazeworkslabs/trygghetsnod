@@ -32,11 +32,14 @@ const MIGRATIONS = [
      id           SERIAL PRIMARY KEY,
      group_id     INTEGER NOT NULL REFERENCES forum_groups(id) ON DELETE CASCADE,
      author_name  TEXT NOT NULL,
+     author_role  TEXT NOT NULL DEFAULT 'medborgare',
      body         TEXT NOT NULL,
      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
      deleted_at   TIMESTAMPTZ,
      moderated_by TEXT
    )`,
+  `ALTER TABLE forum_messages
+     ADD COLUMN IF NOT EXISTS author_role TEXT NOT NULL DEFAULT 'medborgare'`,
   `CREATE INDEX IF NOT EXISTS forum_messages_group_created
      ON forum_messages (group_id, created_at DESC)`,
 ]
@@ -85,7 +88,7 @@ export const getGroupBySlug = async (pool, slug) => {
 
 export const listMessages = async (pool, groupId, { limit = 200 } = {}) => {
   const { rows } = await pool.query(
-    `SELECT id, group_id, author_name, body, created_at, deleted_at, moderated_by
+    `SELECT id, group_id, author_name, author_role, body, created_at, deleted_at, moderated_by
      FROM forum_messages
      WHERE group_id = $1
      ORDER BY created_at ASC
@@ -97,15 +100,16 @@ export const listMessages = async (pool, groupId, { limit = 200 } = {}) => {
 
 // ---- Write ----
 
-export const postMessage = async (pool, { groupId, authorName, body }) => {
+export const postMessage = async (pool, { groupId, authorName, authorRole, body }) => {
   const trimmedBody = String(body || '').trim().slice(0, 2000)
   const trimmedName = String(authorName || '').trim().slice(0, 60)
+  const role = authorRole === 'frg' ? 'frg' : 'medborgare'
   if (!trimmedBody) throw new Error('Meddelandet är tomt')
   if (!trimmedName) throw new Error('Visningsnamn saknas')
   const { rows } = await pool.query(
-    `INSERT INTO forum_messages (group_id, author_name, body)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [groupId, trimmedName, trimmedBody]
+    `INSERT INTO forum_messages (group_id, author_name, author_role, body)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [groupId, trimmedName, role, trimmedBody]
   )
   return rows[0]
 }

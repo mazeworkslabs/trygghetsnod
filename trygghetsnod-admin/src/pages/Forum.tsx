@@ -254,6 +254,11 @@ function GroupMessages({
               <div className="flex items-baseline justify-between gap-4">
                 <div className="flex items-baseline gap-3">
                   <span className="font-sans text-sm font-medium">{m.author_name}</span>
+                  {m.author_role === 'frg' && (
+                    <span className="rounded-sm bg-myndig px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                      FRG
+                    </span>
+                  )}
                   <span className="font-mono text-xs text-ink-muted">{formatDate(m.created_at)}</span>
                 </div>
                 {!m.deleted_at && (

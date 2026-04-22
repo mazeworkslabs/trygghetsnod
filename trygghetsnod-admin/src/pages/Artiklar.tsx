@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Plus, Save, Trash2, ArrowLeft, Eye, EyeOff } from 'lucide-react'
+import { Plus, Save, Trash2, ArrowLeft, Eye, EyeOff, Image } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { api, type Article, type ArticleMeta } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
@@ -78,6 +78,8 @@ export function ArtikelEditor() {
   const { slug } = useParams<{ slug?: string }>()
   const isNew = !slug || slug === 'ny'
   const navigate = useNavigate()
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const [data, setData] = useState<Article | null>(isNew
@@ -86,6 +88,8 @@ export function ArtikelEditor() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [slugEditable, setSlugEditable] = useState(false)
 
   useEffect(() => {
     if (isNew) return
@@ -103,11 +107,47 @@ export function ArtikelEditor() {
       } else {
         const updated = await api.updateArticle(slug!, data)
         setData(updated)
+        if (updated.slug !== slug) navigate(`/artiklar/${updated.slug}`, { replace: true })
+        setSlugEditable(false)
       }
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const insertAtCursor = (text: string) => {
+    if (!data) return
+    const el = bodyRef.current
+    if (!el) {
+      setData({ ...data, body: data.body + text })
+      return
+    }
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? start
+    const next = el.value.slice(0, start) + text + el.value.slice(end)
+    setData({ ...data, body: next })
+    setTimeout(() => {
+      el.focus()
+      const pos = start + text.length
+      el.setSelectionRange(pos, pos)
+    }, 0)
+  }
+
+  const onImageSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setUploading(true)
+    setError(null)
+    try {
+      const { url, filename } = await api.uploadArticleImage(f)
+      insertAtCursor(`\n\n![${filename}](${url})\n\n`)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -193,13 +233,32 @@ export function ArtikelEditor() {
             </div>
 
             <div>
-              <label className="field-label">Text (markdown)</label>
+              <div className="flex items-center justify-between">
+                <label className="field-label">Text (markdown)</label>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="btn-ghost"
+                  disabled={uploading}
+                >
+                  <Image className="h-3.5 w-3.5" />
+                  {uploading ? 'Laddar upp…' : 'Infoga bild'}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onImageSelected}
+                />
+              </div>
               <textarea
+                ref={bodyRef}
                 className="field-input mt-2 font-mono text-sm leading-relaxed"
                 rows={18}
                 value={data.body}
                 onChange={(e) => setData({ ...data, body: e.target.value })}
-                placeholder="## Underrubrik&#10;&#10;Fri text. **Fet** och _kursiv_ stöds.&#10;&#10;- Punktlistor&#10;- Länkar: [text](url)"
+                placeholder="## Underrubrik&#10;&#10;Fri text. **Fet** och _kursiv_ stöds.&#10;&#10;- Punktlistor&#10;- Länkar: [text](url)&#10;- Bild: ![alt](url) — eller klicka 'Infoga bild' ovan"
               />
             </div>
           </div>
@@ -246,8 +305,25 @@ export function ArtikelEditor() {
               </div>
               {!isNew && (
                 <div>
-                  <div className="field-label">Slug (URL)</div>
-                  <div className="mt-2 font-mono text-xs text-ink-muted">/nyheter/{data.slug}</div>
+                  <div className="flex items-center justify-between">
+                    <label className="field-label">Slug (URL)</label>
+                    <button
+                      type="button"
+                      className="font-mono text-[10px] uppercase tracking-wider text-ink-muted hover:text-ink"
+                      onClick={() => setSlugEditable(!slugEditable)}
+                    >
+                      {slugEditable ? 'Lås' : 'Redigera'}
+                    </button>
+                  </div>
+                  {slugEditable ? (
+                    <input
+                      className="field-input mt-2 font-mono text-sm"
+                      value={data.slug}
+                      onChange={(e) => setData({ ...data, slug: e.target.value })}
+                    />
+                  ) : (
+                    <div className="mt-2 font-mono text-xs text-ink-muted">/nyheter/{data.slug}</div>
+                  )}
                 </div>
               )}
             </div>

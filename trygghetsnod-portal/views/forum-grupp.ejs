@@ -6,7 +6,7 @@
 <title><%= group.name %> – Forum – <%= config.kommun %></title>
 <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
+<body data-name="<%= displayName %>">
 <header class="site">
   <div class="brand">
     <div class="brand-name">Trygghetsnod</div>
@@ -78,45 +78,83 @@
     } catch { return ''; }
   }
 
+  function renderBody(raw) {
+    // Escape först, sen markera @mentions
+    var esc = escapeHTML(raw);
+    esc = esc.replace(/(^|\s)(@[\wÅÄÖåäöÉéÈèÀàÇç][\wÅÄÖåäöÉéÈèÀàÇç._-]{0,30})/g,
+      function (_, pre, mention) { return pre + '<span class="forum-mention">' + mention + '</span>'; });
+    return esc.replace(/\n/g, '<br />');
+  }
+
   function render(m) {
     var li = document.createElement('li');
-    li.className = 'forum-msg' + (m.deleted_at ? ' forum-msg-deleted' : '');
+    var isFrg = m.author_role === 'frg';
+    li.className = 'forum-msg' + (m.deleted_at ? ' forum-msg-deleted' : '') + (isFrg ? ' forum-msg-frg' : '');
+    var badge = isFrg ? '<span class="forum-role-badge">FRG</span>' : '';
     if (m.deleted_at) {
       li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' +
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + badge +
         '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
         '<div class="forum-msg-body forum-msg-removed">Borttaget av ' + escapeHTML(m.moderated_by || 'FRG') + '</div>';
     } else {
       li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' +
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + badge +
         '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
-        '<div class="forum-msg-body">' + escapeHTML(m.body).replace(/\n/g, '<br />') + '</div>';
+        '<div class="forum-msg-body">' + renderBody(m.body) + '</div>';
     }
     return li;
+  }
+
+  // Ljudnotis: kort klick-ton när nytt meddelande från någon annan
+  var audioCtx = null;
+  function ping() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var o = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+      o.start(); o.stop(audioCtx.currentTime + 0.22);
+    } catch (e) {}
   }
 
   function isAtBottom(el) {
     return (el.scrollHeight - el.scrollTop - el.clientHeight) < 60;
   }
 
+  var myName = document.body.dataset.name || '';
+  var firstLoad = true;
+
   function fetchMessages() {
     fetch('/api/forum/groups/' + groupId + '/messages')
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var wasAtBottom = atBottom;
+        var addedFromOther = false;
         (data.messages || []).forEach(function (m) {
           var key = String(m.id);
           if (seen[key]) {
             var existing = document.getElementById('m-' + key);
-            if (existing && m.deleted_at) existing.replaceWith(Object.assign(render(m), { id: 'm-' + key }));
+            if (existing && m.deleted_at && !existing.classList.contains('forum-msg-deleted')) {
+              var replaced = render(m);
+              replaced.id = 'm-' + key;
+              existing.replaceWith(replaced);
+            }
             return;
           }
           seen[key] = true;
           var li = render(m);
           li.id = 'm-' + key;
           list.appendChild(li);
+          if (!firstLoad && m.author_name !== myName) addedFromOther = true;
         });
         if (wasAtBottom) list.scrollTop = list.scrollHeight;
+        if (addedFromOther) ping();
+        firstLoad = false;
       })
       .catch(function () {});
   }
