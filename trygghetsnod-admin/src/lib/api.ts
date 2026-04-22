@@ -93,6 +93,17 @@ export interface ForumGroup {
   last_message_at: string | null
 }
 
+export interface ForumToken {
+  id: number
+  token_secret: string
+  display_name: string
+  role: 'medborgare' | 'frg'
+  issued_by: string
+  issued_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
 export interface ForumMessage {
   id: number
   group_id: number
@@ -196,6 +207,23 @@ export const api = {
     request<{ ok: true }>(`/api/admin/forum/groups/${id}`, { method: 'DELETE' }),
   deleteForumMessage: (id: number, author?: string) =>
     request<{ ok: true }>(`/api/admin/forum/messages/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ author: author || 'FRG' }),
+    }),
+  forumSettings: () => request<{ mode: 'oppet' | 'verifierade' }>('/api/admin/forum/settings'),
+  saveForumSettings: (mode: 'oppet' | 'verifierade', author?: string) =>
+    request<{ mode: string }>('/api/admin/forum/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ mode, author: author || 'FRG' }),
+    }),
+  forumTokens: () => request<{ tokens: ForumToken[] }>('/api/admin/forum/tokens'),
+  createForumToken: (data: { display_name: string; role?: 'medborgare' | 'frg'; issued_by?: string }) =>
+    request<ForumToken>('/api/admin/forum/tokens', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  revokeForumToken: (id: number, author?: string) =>
+    request<{ ok: true }>(`/api/admin/forum/tokens/${id}`, {
       method: 'DELETE',
       body: JSON.stringify({ author: author || 'FRG' }),
     }),

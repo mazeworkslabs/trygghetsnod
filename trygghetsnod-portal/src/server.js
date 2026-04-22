@@ -18,6 +18,13 @@ import {
   createGroup,
   updateGroup,
   deleteGroup,
+  getForumMode,
+  setForumMode,
+  createToken,
+  listTokens,
+  revokeToken,
+  findActiveToken,
+  touchToken,
 } from './forum.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -46,6 +53,12 @@ app.set('view engine', 'ejs')
 app.use(express.urlencoded({ extended: true }))
 app.use(express.static(join(ROOT, 'public')))
 
+// PWA service worker med rätt scope-header
+app.get('/sw.js', (_req, res) => {
+  res.set('Service-Worker-Allowed', '/')
+  res.type('application/javascript').sendFile(join(ROOT, 'public', 'sw.js'))
+})
+
 app.use('/vendor/maplibre', express.static(join(ROOT, 'node_modules/maplibre-gl/dist')))
 app.use('/vendor/pmtiles', express.static(join(ROOT, 'node_modules/pmtiles/dist')))
 app.use('/vendor/protomaps', express.static(join(ROOT, 'node_modules/protomaps-themes-base/dist')))
@@ -60,6 +73,31 @@ migrateForum(forumPool).catch((err) => {
 
 const readDisplayName = (req) =>
   String(req.cookies?.tnod_name || '').trim().slice(0, 60)
+
+const readTokenCookie = (req) => String(req.cookies?.tnod_token || '').trim() || null
+
+const resolveForumIdentity = async (req) => {
+  const secret = readTokenCookie(req)
+  if (secret) {
+    const tok = await findActiveToken(forumPool, secret)
+    if (tok) {
+      touchToken(forumPool, tok.id).catch(() => {})
+      return {
+        name: tok.display_name,
+        role: tok.role,
+        tokenId: tok.id,
+        verified: true,
+      }
+    }
+  }
+  const name = readDisplayName(req)
+  return {
+    name,
+    role: isLocalRequest(req) ? 'frg' : 'medborgare',
+    tokenId: null,
+    verified: false,
+  }
+}
 
 const KIWIX_BASE_OVERRIDE = process.env.KIWIX_BASE
 
@@ -608,24 +646,34 @@ app.get('/nyheter/:slug', (req, res) => {
 
 // ---- Forum (publikt) ----
 
-app.get('/forum', async (_req, res) => {
+app.get('/forum', async (req, res) => {
   const config = loadKommunJSON('config.json')
   const groups = await listGroups(forumPool)
-  res.render('forum', { config, groups, formatDate })
+  const mode = await getForumMode(forumPool)
+  const identity = await resolveForumIdentity(req)
+  res.render('forum', { config, groups, mode, identity, formatDate })
 })
 
-app.get('/forum/:slug', async (req, res) => {
-  const config = loadKommunJSON('config.json')
-  const group = await getGroupBySlug(forumPool, req.params.slug)
-  if (!group) return res.status(404).send('Gruppen finns inte')
-  res.render('forum-grupp', {
-    config,
-    group,
-    displayName: readDisplayName(req),
-    formatDate,
+// OBS: måste ligga före /forum/:slug annars fångas den av slug-routen.
+app.get('/forum/token', async (req, res) => {
+  const secret = String(req.query.t || '').trim()
+  if (!secret) return res.status(400).send('Token saknas')
+  const tok = await findActiveToken(forumPool, secret)
+  if (!tok) return res.status(404).send('Token är ogiltig eller indragen. Gå till FRG för en ny.')
+  res.cookie('tnod_token', secret, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 3600 * 1000,
   })
+  res.cookie('tnod_name', tok.display_name, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 3600 * 1000,
+  })
+  res.redirect(req.query.redirect && String(req.query.redirect).startsWith('/') ? String(req.query.redirect) : '/forum')
 })
 
+// Byte-namn-sidan ska också före slug.
 app.get('/forum/namn-byte', (req, res) => {
   const config = loadKommunJSON('config.json')
   res.render('forum-namn', {
@@ -634,6 +682,23 @@ app.get('/forum/namn-byte', (req, res) => {
     redirect: req.query.redirect || '/forum',
   })
 })
+
+app.get('/forum/:slug', async (req, res) => {
+  const config = loadKommunJSON('config.json')
+  const group = await getGroupBySlug(forumPool, req.params.slug)
+  if (!group) return res.status(404).send('Gruppen finns inte')
+  const mode = await getForumMode(forumPool)
+  const identity = await resolveForumIdentity(req)
+  res.render('forum-grupp', {
+    config,
+    group,
+    mode,
+    identity,
+    displayName: identity.name,
+    formatDate,
+  })
+})
+
 
 app.post('/forum/namn', (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60)
@@ -657,13 +722,20 @@ app.get('/api/forum/groups/:id/messages', async (req, res) => {
 })
 
 app.post('/api/forum/groups/:id/messages', async (req, res) => {
-  const authorName = readDisplayName(req)
-  if (!authorName) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
+  const mode = await getForumMode(forumPool)
+  const identity = await resolveForumIdentity(req)
+  if (mode === 'verifierade' && !identity.verified && !isLocalRequest(req)) {
+    return res.status(403).json({
+      error: 'Forumet kräver just nu FRG-verifiering för att posta. Gå till FRG-volontärerna på trygghetspunkten för att få en token.',
+    })
+  }
+  if (!identity.name) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
   try {
     const msg = await postMessage(forumPool, {
       groupId: Number(req.params.id),
-      authorName,
-      authorRole: isLocalRequest(req) ? 'frg' : 'medborgare',
+      authorName: identity.name,
+      authorRole: identity.role,
+      tokenId: identity.tokenId,
       body: req.body?.body,
     })
     res.json(msg)
@@ -718,6 +790,65 @@ app.delete('/api/admin/forum/messages/:id', localOnly, async (req, res) => {
   await softDeleteMessage(forumPool, Number(req.params.id), moderatedBy)
   appendLoggbok({ type: 'forum', title: `Meddelande borttaget (#${req.params.id})`, author: moderatedBy })
   res.json({ ok: true })
+})
+
+app.get('/api/admin/forum/settings', localOnly, async (_req, res) => {
+  const mode = await getForumMode(forumPool)
+  res.json({ mode })
+})
+
+app.put('/api/admin/forum/settings', localOnly, async (req, res) => {
+  const mode = await setForumMode(forumPool, req.body?.mode)
+  appendLoggbok({
+    type: 'forum',
+    title: `Forumläge: ${mode === 'verifierade' ? 'Endast verifierade får posta' : 'Öppet för alla'}`,
+    author: req.body?.author || 'FRG',
+  })
+  res.json({ mode })
+})
+
+app.get('/api/admin/forum/tokens', localOnly, async (_req, res) => {
+  const tokens = await listTokens(forumPool)
+  res.json({ tokens })
+})
+
+app.post('/api/admin/forum/tokens', localOnly, async (req, res) => {
+  try {
+    const token = await createToken(forumPool, {
+      displayName: req.body?.display_name,
+      role: req.body?.role,
+      issuedBy: req.body?.issued_by,
+    })
+    appendLoggbok({
+      type: 'forum',
+      title: `Token utställd till "${token.display_name}" (${token.role})`,
+      author: token.issued_by,
+    })
+    res.json(token)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.delete('/api/admin/forum/tokens/:id', localOnly, async (req, res) => {
+  await revokeToken(forumPool, Number(req.params.id))
+  appendLoggbok({
+    type: 'forum',
+    title: `Token återkallad (#${req.params.id})`,
+    author: req.body?.author || 'FRG',
+  })
+  res.json({ ok: true })
+})
+
+// QR-kod som PNG för en token — admin visar upp den för medborgaren att scanna.
+app.get('/api/admin/forum/tokens/:id/qr', localOnly, async (req, res) => {
+  const tokens = await listTokens(forumPool)
+  const tok = tokens.find(t => t.id === Number(req.params.id))
+  if (!tok) return res.status(404).json({ error: 'hittades inte' })
+  const base = String(req.query.host || '').trim() || `http://${req.hostname}:${PORT}`
+  const url = `${base}/forum/token?t=${encodeURIComponent(tok.token_secret)}`
+  const buf = await QRCode.toBuffer(url, { width: 420, margin: 2, errorCorrectionLevel: 'M' })
+  res.type('png').send(buf)
 })
 
 app.get('/kartor', (_req, res) => {

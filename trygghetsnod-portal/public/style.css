@@ -246,6 +246,10 @@ body.cms header.site a { color: #fafafa; }
 .forum-msg-frg { background: var(--info-bg, rgba(30, 58, 95, 0.04)); padding-left: 0.75rem; padding-right: 0.75rem; margin-left: -0.75rem; margin-right: -0.75rem; border-left: 3px solid var(--info, #1E3A5F); }
 .forum-role-badge { display: inline-block; padding: 1px 6px; margin-left: 0.5rem; background: var(--info, #1E3A5F); color: #fff; font-family: var(--mono); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.05em; border-radius: 2px; text-transform: uppercase; vertical-align: baseline; }
 .forum-mention { color: var(--info, #1E3A5F); background: rgba(30, 58, 95, 0.08); padding: 0 3px; border-radius: 2px; font-weight: 600; }
+.forum-verified { display: inline-block; margin-left: 0.4rem; color: #fff; background: #1da1f2; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; font-size: 9px; font-family: var(--sans); font-weight: 900; vertical-align: middle; }
+.forum-verified-inline { margin-left: 0.5rem; color: #1da1f2; font-weight: 600; }
+.forum-gate { margin: 1rem 0; padding: 1rem 1.25rem; background: var(--warning-bg, #fff4e6); border-left: 3px solid var(--warning, #b55b00); font-size: 0.95rem; line-height: 1.5; }
+.forum-gate strong { display: block; margin-bottom: 0.25rem; font-family: var(--sans); }
 
 .forum-post-form { border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 0.5rem; }
 .forum-post-form textarea { width: 100%; box-sizing: border-box; padding: 0.75rem; border: 1px solid var(--line); font-family: var(--serif); font-size: 1rem; line-height: 1.4; background: var(--paper); resize: vertical; }

@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Forum – <%= config.kommun %></title>
 <link rel="stylesheet" href="/style.css" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+<meta name="theme-color" content="#1E3A5F" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Trygghetsnod" />
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}</script>
 </head>
 <body>
 <header class="site">
@@ -22,6 +30,12 @@
       Här kan du skriva till andra som är här. Alla inlägg är offentliga. FRG-volontärer är
       administratörer och kan ta bort olämpliga meddelanden. Ring 112 vid akut fara.
     </p>
+    <% if (mode === 'verifierade') { %>
+      <div class="forum-gate">
+        <strong>Skrivläge: endast verifierade.</strong>
+        Du kan läsa allt fritt. För att posta inlägg behöver du en token från FRG-volontärerna.
+      </div>
+    <% } %>
 
     <% if (groups.length === 0) { %>
       <p>Inga grupper finns än.</p>

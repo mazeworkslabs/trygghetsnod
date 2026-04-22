@@ -20,5 +20,8 @@
     "pmtiles": "^4.4.1",
     "protomaps-themes-base": "^4.5.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.5"
   }
 }

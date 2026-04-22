@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title><%= group.name %> – Forum – <%= config.kommun %></title>
 <link rel="stylesheet" href="/style.css" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+<meta name="theme-color" content="#1E3A5F" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Trygghetsnod" />
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}</script>
 </head>
 <body data-name="<%= displayName %>">
 <header class="site">
@@ -24,7 +32,13 @@
       <% } %>
     </div>
 
-    <% if (!displayName) { %>
+    <% if (mode === 'verifierade' && !identity.verified) { %>
+      <div class="forum-gate">
+        <strong>Endast verifierade får posta just nu.</strong>
+        Gå till FRG-volontärerna på trygghetspunkten. De skapar en token åt dig som du scannar med telefonen (QR-kod) — sedan kan du skriva.
+        Alla kan läsa utan token.
+      </div>
+    <% } else if (!displayName) { %>
       <form class="forum-name-form" action="/forum/namn" method="post">
         <label for="name">Välj ett visningsnamn för att skriva i forumet</label>
         <input id="name" name="name" type="text" required maxlength="60" placeholder="T.ex. Anna från Sulvik" />
@@ -36,9 +50,21 @@
 
     <ul id="messages" class="forum-messages" data-group-id="<%= group.id %>"></ul>
 
-    <% if (displayName) { %>
+    <% const canPost = (mode !== 'verifierade') || identity.verified %>
+    <% if (canPost && displayName) { %>
       <form id="post-form" class="forum-post-form">
-        <div class="forum-post-meta">Skriver som <strong><%= displayName %></strong> · <a href="/forum/namn-byte?redirect=/forum/<%= group.slug %>">byt namn</a></div>
+        <div class="forum-post-meta">
+          Skriver som <strong><%= displayName %></strong>
+          <% if (identity.verified && identity.role !== 'frg') { %>
+            <span class="forum-verified-inline" title="Verifierad hos FRG">&#10003; Verifierad</span>
+          <% } %>
+          <% if (identity.role === 'frg') { %>
+            <span class="forum-role-badge">FRG</span>
+          <% } %>
+          <% if (!identity.verified) { %>
+            · <a href="/forum/namn-byte?redirect=/forum/<%= group.slug %>">byt namn</a>
+          <% } %>
+        </div>
         <textarea id="post-body" rows="3" maxlength="2000" placeholder="Skriv ditt meddelande…" required></textarea>
         <button type="submit">Skicka</button>
         <div id="post-error" class="forum-error" hidden></div>
@@ -89,16 +115,19 @@
   function render(m) {
     var li = document.createElement('li');
     var isFrg = m.author_role === 'frg';
+    var isVerified = !!m.verified || isFrg;
     li.className = 'forum-msg' + (m.deleted_at ? ' forum-msg-deleted' : '') + (isFrg ? ' forum-msg-frg' : '');
-    var badge = isFrg ? '<span class="forum-role-badge">FRG</span>' : '';
+    var verifiedCheck = isVerified && !isFrg
+      ? '<span class="forum-verified" title="Verifierad hos FRG">&#10003;</span>' : '';
+    var frgBadge = isFrg ? '<span class="forum-role-badge">FRG</span>' : '';
     if (m.deleted_at) {
       li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + badge +
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + verifiedCheck + frgBadge +
         '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
         '<div class="forum-msg-body forum-msg-removed">Borttaget av ' + escapeHTML(m.moderated_by || 'FRG') + '</div>';
     } else {
       li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + badge +
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + verifiedCheck + frgBadge +
         '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
         '<div class="forum-msg-body">' + renderBody(m.body) + '</div>';
     }
