@@ -70,6 +70,43 @@ const SEVERITIES = {
   emergency: { label: 'Nödläge', tone: 'emergency' },
 }
 
+let kiwixCache = { at: 0, books: [] }
+const fetchKiwixBooks = async (base) => {
+  const now = Date.now()
+  if (now - kiwixCache.at < 30_000) return kiwixCache.books
+  try {
+    const r = await fetch(`${base}/catalog/v2/entries?count=-1`, { signal: AbortSignal.timeout(2000) })
+    if (!r.ok) return kiwixCache.books
+    const xml = await r.text()
+    const books = []
+    const entryRe = /<entry>([\s\S]*?)<\/entry>/g
+    let m
+    while ((m = entryRe.exec(xml)) !== null) {
+      const e = m[1]
+      const get = (re) => { const x = e.match(re); return x ? x[1] : '' }
+      const name = get(/<name>([^<]+)<\/name>/)
+      const title = get(/<title>([^<]+)<\/title>/)
+      if (!name || !title) continue
+      const href = get(/<link[^>]+type="text\/html"[^>]+href="([^"]+)"/)
+      // Kiwix returnerar t.ex. "/content/krisinformation_sv_2026-04"
+      // — vi exponerar boken via /innehall/<slug>/ (slug = sista path-segmentet)
+      const slug = href ? href.replace(/^\/content\//, '').replace(/\/$/, '') : name
+      books.push({
+        name,
+        title,
+        language: get(/<language>([^<]+)<\/language>/),
+        summary: get(/<summary>([^<]+)<\/summary>/),
+        slug,
+        articleCount: Number(get(/<articleCount>(\d+)<\/articleCount>/) || 0),
+      })
+    }
+    kiwixCache = { at: now, books }
+    return books
+  } catch {
+    return kiwixCache.books
+  }
+}
+
 const formatDate = (iso) => {
   const d = new Date(iso)
   const pad = (n) => String(n).padStart(2, '0')
@@ -88,10 +125,17 @@ const localOnly = (req, res, next) => {
   next()
 }
 
-app.get('/', (_req, res) => {
+app.get('/', async (_req, res) => {
   const config = loadKommunJSON('config.json')
   const update = loadKommunJSON('update.json')
-  res.render('index', { config, update, sev: SEVERITIES[update.severity], formatDate })
+  const books = await fetchKiwixBooks(config.kiwix_base)
+  res.render('index', {
+    config,
+    update,
+    books,
+    sev: SEVERITIES[update.severity],
+    formatDate,
+  })
 })
 
 app.get('/print', (_req, res) => {

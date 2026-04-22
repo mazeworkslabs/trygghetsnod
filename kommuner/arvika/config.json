@@ -4,9 +4,6 @@
   "wifi_ssid": "Trygghetsnod-Arvika",
   "wifi_password": "",
   "kiwix_base": "http://localhost:8090",
-  "maps_base": "http://localhost:8080/maps",
-  "ai_base": "http://localhost:8080/chat",
-  "kommun_zim_path": "/innehall/arvika_kommun_2026-04/www.arvika.se/",
   "map_center": [12.59, 59.65],
   "map_zoom": 10
 }

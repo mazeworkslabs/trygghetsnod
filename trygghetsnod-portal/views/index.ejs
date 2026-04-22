@@ -31,22 +31,16 @@
         <h3>Sök</h3>
         <p>Hitta information i allt lokalt innehåll.</p>
       </a>
-      <a class="card" href="<%= config.kommun_zim_path %>">
-        <h3><%= config.kommun %></h3>
-        <p>Kommunens hemsida – offline.</p>
-      </a>
-      <a class="card" href="/innehall/krisinformation_sv_2026-04/www.krisinformation.se/">
-        <h3>Krisinformation.se</h3>
-        <p>Samlad svensk krisinformation – offline.</p>
-      </a>
       <a class="card" href="/kartor">
         <h3>Kartor</h3>
-        <p>Offline-karta med Arvikas trygghetspunkter.</p>
+        <p>Offline-karta med <%= config.kommun %>s trygghetspunkter.</p>
       </a>
-      <a class="card" href="/innehall/wikipedia_sv_top/A/index">
-        <h3>Wikipedia</h3>
-        <p>Svenska Wikipedia – offline.</p>
-      </a>
+      <% (books || []).filter(b => b.language === 'swe').forEach(b => { %>
+        <a class="card" href="/innehall/<%= b.slug %>/">
+          <h3><%= b.title %></h3>
+          <p><%= b.summary || 'Offline-bibliotek.' %></p>
+        </a>
+      <% }) %>
     </div>
   </section>
 
