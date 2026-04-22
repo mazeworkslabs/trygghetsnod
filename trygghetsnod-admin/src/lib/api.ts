@@ -46,12 +46,61 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface LoggbokEntry {
+  type: string
+  title?: string
+  note?: string
+  severity?: 'info' | 'warning' | 'emergency'
+  author?: string
+  at: string
+}
+
+export type PoiKategori =
+  | 'trygghetspunkt'
+  | 'skyddsrum'
+  | 'vardcentral'
+  | 'apotek'
+  | 'brandstation'
+  | 'annat'
+
+export interface PoiFeature {
+  type: 'Feature'
+  geometry: { type: 'Point'; coordinates: [number, number] }
+  properties: {
+    namn: string
+    kategori: PoiKategori
+    adress?: string
+    kapacitet?: string
+    reservkraft?: string
+    anmarkning?: string
+  }
+}
+
+export interface PoiCollection {
+  type: 'FeatureCollection'
+  metadata?: Record<string, unknown>
+  features: PoiFeature[]
+}
+
 export const api = {
   status: () => request<SystemStatus>('/api/admin/status'),
   zims: () => request<{ zims: Zim[] }>('/api/admin/zims'),
   update: () => request<Update>('/api/admin/update'),
   saveUpdate: (data: Omit<Update, 'updated_at'>) =>
     request<Update>('/api/admin/update', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  loggbok: (limit = 100) =>
+    request<{ entries: LoggbokEntry[] }>(`/api/admin/loggbok?limit=${limit}`),
+  addLoggbokEntry: (data: { type?: string; title?: string; note?: string; author?: string }) =>
+    request<{ ok: true }>('/api/admin/loggbok', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  poi: () => request<PoiCollection>('/api/admin/poi'),
+  savePoi: (data: PoiCollection) =>
+    request<{ ok: true; count: number }>('/api/admin/poi', {
       method: 'PUT',
       body: JSON.stringify(data),
     }),

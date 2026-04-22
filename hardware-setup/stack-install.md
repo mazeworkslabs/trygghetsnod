@@ -1,34 +1,22 @@
 # Stack-installation — Trygghetsnod på Mac mini
 
-Följer efter `macos-checklist.md` Del 1–3. Bygger upp utvecklings- och driftmiljö, klonar repot, drar in storage, startar containrarna, verifierar att portalen svarar.
+Följer efter `macos-checklist.md` Del 1–3. Bygger upp drift­miljön, klonar repot, drar in storage från USB, startar stacken och verifierar att portalen svarar.
 
-Räkna med 1–2 timmar inklusive nedladdningar.
+Räkna med 1 timme inklusive nedladdningar.
+
+Stacken består av:
+
+- **Kiwix-server** (Docker, port 8090) — serverar ZIM-bibliotek
+- **Portal** (Node, port 8400) — Express + EJS, levererar medborgarsidan, admin-SPA:n och kartor
+- **Admin** (statiska filer) — React/Vite-app som bundlas in i portalen vid build
 
 ---
 
 ## Del 1 — Verktyg
 
-### Xcode Command Line Tools
-
-I Terminal:
-
 ```bash
 xcode-select --install
-```
-
-Klicka **Installera** i dialogen som dyker upp. Tar 5–15 minuter beroende på nät.
-
-### Homebrew
-
-```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-Följ instruktionerna i slutet om att lägga till `brew` i `PATH`.
-
-### Git, Node, OrbStack
-
-```bash
 brew install git node
 brew install --cask orbstack
 ```
@@ -50,111 +38,123 @@ docker --version    # via OrbStack
 ```bash
 mkdir -p ~/Code
 cd ~/Code
-git clone git@github.com:mazeworks/trygghetsnod.git
+git clone git@github.com:mazeworkslabs/trygghetsnod.git
 cd trygghetsnod
-```
-
-Om det är första gången du sätter upp git på enheten:
-
-```bash
-git config --global user.name "Trygghetsnod-installation"
-git config --global user.email "noreply@trygghetsnod.se"
 ```
 
 ---
 
 ## Del 3 — Storage från USB
 
-`storage/` ligger inte i git (8 GB binär data). Den distribueras separat på krypterad USB-stick med signerat innehåll.
+`storage/` ligger inte i git (~8 GB ZIM + PMTiles). Distribueras separat på krypterad USB med signerat innehåll.
 
 ```bash
-# Anslut USB
-ls /Volumes/   # hitta stickans namn
-
-# Kopiera in
+ls /Volumes/                      # hitta stickans namn
 rsync -avh --progress /Volumes/<USB-NAMN>/storage/ ~/Code/trygghetsnod/storage/
 
-# Verifiera kontentan
 ls ~/Code/trygghetsnod/storage/zim/
 ls ~/Code/trygghetsnod/storage/maps/pmtiles/
 ```
 
----
+Förväntat innehåll i `storage/zim/`:
 
-## Del 4 — Konfiguration
-
-```bash
-cp .env.example .env
-```
-
-Generera nya hemligheter:
-
-```bash
-# APP_KEY (32 tecken hex)
-openssl rand -hex 16
-
-# DB_PASSWORD och MYSQL_ROOT_PASSWORD (varsin)
-openssl rand -hex 16
-```
-
-Klistra in i `.env`. Lagra också i lösenordshanteraren — kommer behövas vid service.
+- `arvika_kommun_<datum>.zim` — kommunens hemsida (eller motsvarande för andra kommuner)
+- `krisinformation_sv_<datum>.zim` — Krisinformation.se på svenska
+- `wikipedia_sv_top_mini_<datum>.zim` — utdrag av svenska Wikipedia
 
 ---
 
-## Del 5 — Stacken upp
+## Del 4 — Bygg och starta
 
 ```bash
 cd ~/Code/trygghetsnod
-docker compose up -d
+
+# Installera deps
+( cd trygghetsnod-portal && npm install )
+( cd trygghetsnod-admin  && npm install && npm run build )
+
+# Starta hela stacken (Kiwix-container + native portal)
+scripts/start.sh
 ```
 
-Vänta 1–2 minuter på att MySQL initierar. Kolla att alla containrar är `running`:
+`start.sh` kör `docker compose up -d` för Kiwix och startar portalen som bakgrundsprocess. Logg och PID hamnar i `storage/logs/`.
+
+Status:
 
 ```bash
-docker compose ps
+scripts/status.sh
 ```
 
-Förväntat: `nomad_admin`, `nomad_mysql`, `nomad_redis`, `nomad_updater`, `nomad_dozzle`.
+Stoppa:
 
-NOMAD-admin på `http://localhost:8080`. Loggar via Dozzle på `http://localhost:9999`.
+```bash
+scripts/stop.sh
+```
 
-I NOMAD-admin: lägg till ZIM-bibliotek, konfigurera Kiwix-server (port 8090), maps-server (8080/maps).
+Tail på loggarna i realtid:
+
+```bash
+scripts/logs.sh
+```
 
 ---
 
-## Del 6 — Portalen
+## Del 5 — Auto-start vid inloggning
 
 ```bash
-cd trygghetsnod-portal
-npm install
-KOMMUN=arvika npm start
+scripts/install-launchagent.sh
 ```
 
-Portalen på `http://localhost:8400`.
+Installerar `~/Library/LaunchAgents/se.mazeworks.trygghetsnod.plist`. Stacken startar nu automatiskt när Mac-mini:n loggar in efter omstart.
 
-För att portalen ska starta automatiskt vid macOS-boot — sätt upp en LaunchAgent (kommer i en framtida revision av denna guide).
+Avinstallera:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/se.mazeworks.trygghetsnod.plist
+rm ~/Library/LaunchAgents/se.mazeworks.trygghetsnod.plist
+```
 
 ---
 
-## Del 7 — Verifiera grundfunktioner
+## Del 6 — Verifiera grundfunktioner
 
-I webbläsaren på enheten:
+På enheten själv (`http://localhost:8400`):
 
-- `http://localhost:8400` — startsida med lägesuppdatering och fem kort
-- `http://localhost:8400/sok?q=el+kris` — sök ger träffar från Krisinformation.se m.fl.
-- `http://localhost:8400/innehall/krisinformation_sv_2026-04/www.krisinformation.se/` — Krisinformation-spegel laddas med banner överst
-- `http://localhost:8400/kartor` — Sverige-karta med Arvika POI:er
-- `http://localhost:8400/cms` — CMS för platsansvarig (lokal åtkomst, fungerar)
-- `http://localhost:8400/print` — A4-version av aktuell lägesuppdatering
-- `http://localhost:8400/qr.png` — QR-kod till wifi:t
+- `/` — startsida med aktuell lägesuppdatering och kort till sök/kartor/innehåll
+- `/sok?q=el+kris` — sökresultat från Kiwix
+- `/innehall/krisinformation_sv_<datum>/www.krisinformation.se/` — Krisinformation-spegel med Trygghetsnod-banner
+- `/kartor` — karta med trygghetspunkter och samhällsresurser
+- `/print` — A4-utskrift av aktuell lägesuppdatering
+- `/qr.png` — QR-kod till wifi:t
+- `/admin` — administrationsgränssnitt (Översikt, Lägesuppdatering, Kartmarkörer, Innehåll, Loggbok)
 
-Från en annan enhet på samma nät (din MacBook eller en telefon):
+Från en annan enhet på samma nät:
 
 - `http://<mac-mini-ip>:8400` — portalen syns
-- `http://<mac-mini-ip>:8400/cms` — ska ge **403 Forbidden** (det är medvetet — CMS bara från enheten själv)
+- `http://<mac-mini-ip>:8400/admin` — ska ge **403 Forbidden**
+  (medvetet — admin är bara åtkomligt från `localhost`)
+
+---
+
+## Konfiguration per kommun
+
+Allt kommun-specifikt ligger under `kommuner/<kommun>/`:
+
+- `config.json` — kommunens namn, plats, wifi-SSID, kart-center
+- `poi.geojson` — kartmarkörer (redigeras via admin)
+- `update.json` — aktuell lägesuppdatering (skrivs av platsansvarig via admin)
+- `loggbok.jsonl` — service- och händelselogg (genereras automatiskt)
+
+Byt kommun genom att sätta `KOMMUN`-miljövariabeln innan portalen startar:
+
+```bash
+KOMMUN=karlstad scripts/start.sh
+```
+
+LaunchAgent-plisten i `scripts/se.mazeworks.trygghetsnod.plist` har `KOMMUN`-värdet hårdkodat — uppdatera där om kommun ska ändras permanent på enheten.
 
 ---
 
 ## Klart
 
-När alla sju verifieringar går grönt är stacken installerad. Nästa steg: `offline-verification.md`.
+När alla verifieringar går grönt är stacken installerad. Nästa steg: `offline-verification.md`.

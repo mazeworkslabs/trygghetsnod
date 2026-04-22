@@ -54,7 +54,8 @@ På testenheten, ladda om alla sidor:
 
 På Mac mini lokalt:
 
-- [ ] `http://localhost:8400/cms` öppnar och kan spara en uppdatering
+- [ ] `http://localhost:8400/admin` öppnar och kan spara en lägesuppdatering
+- [ ] `http://localhost:8400/admin/kartmarkorer` listar trygghetspunkterna och kan spara
 - [ ] `http://localhost:8400/print` visar A4 med kommunens logga och lägesuppdatering
 
 ---
@@ -91,9 +92,9 @@ Om något läcker — fixa det innan leverans.
 
 Om något test fallerar i offline-läget:
 
-- **Sök ger inget?** Kiwix-servern (port 8090) körs i NOMAD. Kolla att containern lever: `docker compose ps`.
+- **Sök ger inget?** Kontrollera Kiwix-containern: `scripts/status.sh`. Förväntat: `Up … (healthy)`.
 - **Karta blank?** PMTiles ligger i `storage/maps/pmtiles/`. Kontrollera att filen finns och är läsbar.
-- **Krisinformation laddar inte?** ZIM ligger i `storage/zim/`. NOMAD måste ha en biblioteksregistrering — kolla NOMAD-admin på localhost:8080.
+- **Krisinformation laddar inte?** ZIM-filerna måste ligga i `storage/zim/` och vara med i `storage/zim/kiwix-library.xml` (skapas vid leverans). Lista böcker: `curl -s http://localhost:8090/catalog/v2/entries | head -c 600`.
 - **Externa anrop syns?** Sök i koden efter URL:er som inte börjar med `localhost` eller relativa paths.
 
 ---

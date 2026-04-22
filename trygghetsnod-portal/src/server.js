@@ -1,5 +1,5 @@
 import express from 'express'
-import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync, statfsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync, statfsSync, appendFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import QRCode from 'qrcode'
@@ -36,8 +36,33 @@ app.use('/vendor/protomaps', express.static(join(ROOT, 'node_modules/protomaps-t
 app.use('/tiles', express.static(MAPS_DIR, { acceptRanges: true }))
 app.use(express.json({ limit: '256kb' }))
 
-const loadKommunJSON = (name) => JSON.parse(readFileSync(join(KOMMUN_DIR, name), 'utf8'))
+const KIWIX_BASE_OVERRIDE = process.env.KIWIX_BASE
+
+const loadKommunJSON = (name) => {
+  const data = JSON.parse(readFileSync(join(KOMMUN_DIR, name), 'utf8'))
+  if (name === 'config.json' && KIWIX_BASE_OVERRIDE) {
+    data.kiwix_base = KIWIX_BASE_OVERRIDE
+  }
+  return data
+}
 const saveKommunJSON = (name, data) => writeFileSync(join(KOMMUN_DIR, name), JSON.stringify(data, null, 2))
+
+const appendLoggbok = (entry) => {
+  const line = JSON.stringify({ ...entry, at: new Date().toISOString() }) + '\n'
+  appendFileSync(join(KOMMUN_DIR, 'loggbok.jsonl'), line)
+}
+
+const readLoggbok = (limit = 50) => {
+  try {
+    const raw = readFileSync(join(KOMMUN_DIR, 'loggbok.jsonl'), 'utf8')
+    const lines = raw.trim().split('\n').filter(Boolean)
+    return lines
+      .slice(-limit)
+      .reverse()
+      .map((l) => { try { return JSON.parse(l) } catch { return null } })
+      .filter(Boolean)
+  } catch { return [] }
+}
 
 const SEVERITIES = {
   info: { label: 'Information', tone: 'info' },
@@ -162,7 +187,66 @@ app.put('/api/admin/update', localOnly, (req, res) => {
     updated_at: new Date().toISOString(),
   }
   saveKommunJSON('update.json', update)
+  appendLoggbok({
+    type: 'lagesuppdatering',
+    title: update.title,
+    severity: update.severity,
+    author: update.author,
+  })
   res.json(update)
+})
+
+app.get('/api/admin/poi', localOnly, (_req, res) => {
+  try {
+    res.json(loadKommunJSON('poi.geojson'))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.put('/api/admin/poi', localOnly, (req, res) => {
+  const body = req.body || {}
+  if (body.type !== 'FeatureCollection' || !Array.isArray(body.features)) {
+    return res.status(400).json({ error: 'FeatureCollection förväntas' })
+  }
+  let existing = {}
+  try { existing = loadKommunJSON('poi.geojson') } catch {}
+  const metadata = {
+    ...(existing.metadata || {}),
+    ...(body.metadata || {}),
+    generated: new Date().toISOString().slice(0, 10),
+  }
+  saveKommunJSON('poi.geojson', {
+    type: 'FeatureCollection',
+    metadata,
+    features: body.features,
+  })
+  appendLoggbok({
+    type: 'poi',
+    title: `Kartmarkörer uppdaterade (${body.features.length} st)`,
+    author: String(body.author || '').trim() || 'Platsansvarig',
+  })
+  res.json({ ok: true, count: body.features.length })
+})
+
+app.get('/api/admin/loggbok', localOnly, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500)
+  res.json({ entries: readLoggbok(limit) })
+})
+
+app.post('/api/admin/loggbok', localOnly, (req, res) => {
+  const body = req.body || {}
+  const entry = {
+    type: String(body.type || 'note').trim() || 'note',
+    title: String(body.title || '').trim(),
+    note: String(body.note || '').trim(),
+    author: String(body.author || '').trim() || 'Platsansvarig',
+  }
+  if (!entry.title && !entry.note) {
+    return res.status(400).json({ error: 'title eller note krävs' })
+  }
+  appendLoggbok(entry)
+  res.json({ ok: true })
 })
 
 // ---- Admin SPA (statiska filer) ----

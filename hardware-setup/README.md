@@ -5,8 +5,8 @@ Konfigurationsdokumentation för att sätta upp en Trygghetsnod-enhet (Mac mini)
 ## Filer
 
 - **`macos-checklist.md`** — Steg-för-steg-checklista för macOS-installation och hårdning. Följs i ordning vid varje ny enhet.
-- **`stack-install.md`** — *(kommer senare)* Installation av Docker, portalen, Kiwix, kartor och AI-stacken.
-- **`offline-verification.md`** — *(kommer senare)* Testprotokoll för att verifiera att enheten fungerar utan internet.
+- **`stack-install.md`** — Installation av Trygghetsnod-stacken: Kiwix-container, Node-portal och admin-app.
+- **`offline-verification.md`** — Testprotokoll för att verifiera att enheten fungerar utan internet.
 
 ## Bas-referens
 

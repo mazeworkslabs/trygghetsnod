@@ -10,13 +10,15 @@ Det här repot innehåller produktkoden. Mer om produkten i sig finns i [`produk
 
 POC-fas. Dialog med kommuner pågår. Ingen produktion ännu.
 
-## Vad som finns
+## Stack
 
-- **`trygghetsnod-portal/`** — webbportalen för medborgare och platsansvarig (Node.js + Express + EJS).
-- **`compose.yaml`** — Docker-stacken (baserad på [Project NOMAD](https://github.com/crosstalk-solutions/project-nomad) med Trygghetsnod-tillägg).
+- **`trygghetsnod-portal/`** — Node + Express + EJS. Medborgar­portalen, sök, kart-vy, content-proxy, admin-API.
+- **`trygghetsnod-admin/`** — React + Vite + TypeScript. Lokal admin-app (servas från `/admin`).
+- **`compose.yaml`** — minimal Docker-stack: bara Kiwix-server för ZIM-bibliotek.
 - **`kommuner/`** — kommunspecifik konfiguration och data (en mapp per kommun). Se `kommuner/README.md`.
-- **`hardware-setup/`** — checklistor för att sätta upp en ny enhet (macOS-hårdning, stack-installation, offline-verifiering).
-- **`produktbeskrivning.md`** — fullständig produktspecifikation (hårdvara, mjukvara, innehåll, funktioner per användargrupp).
+- **`hardware-setup/`** — checklistor för att sätta upp en ny enhet (macOS-hårdning, stack-install, offline-verifiering).
+- **`scripts/`** — `start.sh`, `stop.sh`, `status.sh`, `logs.sh` plus macOS LaunchAgent.
+- **`produktbeskrivning.md`** — fullständig produktspecifikation.
 
 ## Kör lokalt
 
@@ -29,19 +31,14 @@ Förutsättningar:
 Snabbstart:
 
 ```bash
-# 1. Stacken (Kiwix, kartor, NOMAD-admin)
-cp .env.example .env  # justera värden
-docker compose up -d
-
-# 2. Portalen
-cd trygghetsnod-portal
-npm install
-KOMMUN=arvika npm start
+( cd trygghetsnod-portal && npm install )
+( cd trygghetsnod-admin  && npm install && npm run build )
+scripts/start.sh
 ```
 
-Portalen finns då på `http://localhost:8400`.
+Portalen: `http://localhost:8400`. Admin: `http://localhost:8400/admin` — **bara åtkomlig från enheten själv** (localhost), inte från medborgares telefoner på det lokala wifi:t. Säkerhet bygger på fysisk åtkomst till enheten + macOS-användarlösenord.
 
-CMS för platsansvarig: `http://localhost:8400/cms` — **bara åtkomlig från enheten själv** (localhost), inte från medborgares telefoner på det lokala wifi:t. Säkerhet bygger på fysisk åtkomst till enheten + macOS-användarlösenord.
+Status: `scripts/status.sh` · stoppa: `scripts/stop.sh` · loggar: `scripts/logs.sh`.
 
 ## Bidrag
 

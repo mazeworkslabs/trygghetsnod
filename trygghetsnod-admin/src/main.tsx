@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
 import { App } from './App'
 import { Dashboard } from './pages/Dashboard'
 import { Lagesuppdatering } from './pages/Lagesuppdatering'
+import { Kartmarkorer } from './pages/Kartmarkorer'
 import { Innehall } from './pages/Innehall'
 import { Loggbok } from './pages/Loggbok'
 import './index.css'
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<App />}>
           <Route index element={<Dashboard />} />
           <Route path="lagesuppdatering" element={<Lagesuppdatering />} />
+          <Route path="kartmarkorer" element={<Kartmarkorer />} />
           <Route path="innehall" element={<Innehall />} />
           <Route path="loggbok" element={<Loggbok />} />
           <Route path="*" element={<Navigate to="/" replace />} />

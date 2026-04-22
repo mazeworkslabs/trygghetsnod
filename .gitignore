@@ -14,12 +14,9 @@ krisnod-landing/
 # Storage — stora binärfiler, kommunkopplad data, distribueras separat
 storage/
 
-# Drift-data — runtime, ska aldrig commitas
-mysql/
-redis/
-
-# Levande lägesuppdateringar — skrivs av platsansvarig, inte produktdata
+# Levande fältdata — skrivs av platsansvarig på enheten, inte produktdata
 kommuner/*/update.json
+kommuner/*/loggbok.jsonl
 
 # Node
 node_modules/
