@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title><%= group.name %> – Forum – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav><a href="/forum">Tillbaka till forum</a></nav>
+</header>
+
+<main>
+  <section class="panel forum-chat-panel">
+    <div class="forum-group-head">
+      <h2><%= group.name %></h2>
+      <% if (group.description) { %>
+        <p class="forum-group-desc"><%= group.description %></p>
+      <% } %>
+    </div>
+
+    <% if (!displayName) { %>
+      <form class="forum-name-form" action="/forum/namn" method="post">
+        <label for="name">Välj ett visningsnamn för att skriva i forumet</label>
+        <input id="name" name="name" type="text" required maxlength="60" placeholder="T.ex. Anna från Sulvik" />
+        <input type="hidden" name="redirect" value="/forum/<%= group.slug %>" />
+        <button type="submit">Sätt namn</button>
+        <p class="forum-name-hint">Namnet sparas i din webbläsare. Du kan ändra det senare. Ingen registrering, ingen uppgift sparas utanför trygghetsnoden.</p>
+      </form>
+    <% } %>
+
+    <ul id="messages" class="forum-messages" data-group-id="<%= group.id %>"></ul>
+
+    <% if (displayName) { %>
+      <form id="post-form" class="forum-post-form">
+        <div class="forum-post-meta">Skriver som <strong><%= displayName %></strong> · <a href="/forum/namn-byte?redirect=/forum/<%= group.slug %>">byt namn</a></div>
+        <textarea id="post-body" rows="3" maxlength="2000" placeholder="Skriv ditt meddelande…" required></textarea>
+        <button type="submit">Skicka</button>
+        <div id="post-error" class="forum-error" hidden></div>
+      </form>
+    <% } %>
+  </section>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+
+<script>
+(function () {
+  var list = document.getElementById('messages');
+  if (!list) return;
+  var groupId = list.dataset.groupId;
+  var seen = {};
+  var atBottom = true;
+
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function fmtTime(iso) {
+    try {
+      var d = new Date(iso);
+      var p = function (n) { return String(n).padStart(2, '0'); };
+      var now = new Date();
+      var same = d.toDateString() === now.toDateString();
+      var time = p(d.getHours()) + ':' + p(d.getMinutes());
+      if (same) return time;
+      return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + time;
+    } catch { return ''; }
+  }
+
+  function render(m) {
+    var li = document.createElement('li');
+    li.className = 'forum-msg' + (m.deleted_at ? ' forum-msg-deleted' : '');
+    if (m.deleted_at) {
+      li.innerHTML =
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' +
+        '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
+        '<div class="forum-msg-body forum-msg-removed">Borttaget av ' + escapeHTML(m.moderated_by || 'FRG') + '</div>';
+    } else {
+      li.innerHTML =
+        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' +
+        '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
+        '<div class="forum-msg-body">' + escapeHTML(m.body).replace(/\n/g, '<br />') + '</div>';
+    }
+    return li;
+  }
+
+  function isAtBottom(el) {
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 60;
+  }
+
+  function fetchMessages() {
+    fetch('/api/forum/groups/' + groupId + '/messages')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var wasAtBottom = atBottom;
+        (data.messages || []).forEach(function (m) {
+          var key = String(m.id);
+          if (seen[key]) {
+            var existing = document.getElementById('m-' + key);
+            if (existing && m.deleted_at) existing.replaceWith(Object.assign(render(m), { id: 'm-' + key }));
+            return;
+          }
+          seen[key] = true;
+          var li = render(m);
+          li.id = 'm-' + key;
+          list.appendChild(li);
+        });
+        if (wasAtBottom) list.scrollTop = list.scrollHeight;
+      })
+      .catch(function () {});
+  }
+
+  list.addEventListener('scroll', function () { atBottom = isAtBottom(list); });
+
+  var form = document.getElementById('post-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var body = document.getElementById('post-body').value.trim();
+      if (!body) return;
+      var errEl = document.getElementById('post-error');
+      errEl.hidden = true;
+      fetch('/api/forum/groups/' + groupId + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: body })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Kunde inte posta'); });
+        document.getElementById('post-body').value = '';
+        atBottom = true;
+        fetchMessages();
+      }).catch(function (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      });
+    });
+  }
+
+  fetchMessages();
+  setInterval(fetchMessages, 3000);
+})();
+</script>
+</body>
+</html>

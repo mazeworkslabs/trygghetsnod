@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forum – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav><a href="/">Tillbaka till portalen</a></nav>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Forum</h2>
+    <p class="panel-lead">
+      Här kan du skriva till andra som är här. Alla inlägg är offentliga. FRG-volontärer är
+      administratörer och kan ta bort olämpliga meddelanden. Ring 112 vid akut fara.
+    </p>
+
+    <% if (groups.length === 0) { %>
+      <p>Inga grupper finns än.</p>
+    <% } else { %>
+      <ul class="forum-groups">
+        <% groups.forEach(g => { %>
+          <li>
+            <a class="forum-group" href="/forum/<%= g.slug %>">
+              <div class="forum-group-head">
+                <h3><%= g.name %><% if (g.pinned) { %> <span class="pin">fastnålad</span><% } %></h3>
+                <div class="forum-group-count"><%= g.message_count %> inlägg</div>
+              </div>
+              <% if (g.description) { %>
+                <p class="forum-group-desc"><%= g.description %></p>
+              <% } %>
+              <% if (g.last_message_at) { %>
+                <div class="forum-group-last">Senaste: <%= formatDate(g.last_message_at) %></div>
+              <% } %>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+</body>
+</html>

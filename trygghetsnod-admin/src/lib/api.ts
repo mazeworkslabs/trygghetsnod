@@ -82,6 +82,27 @@ export interface PoiCollection {
   features: PoiFeature[]
 }
 
+export interface ForumGroup {
+  id: number
+  slug: string
+  name: string
+  description: string
+  pinned: boolean
+  created_at: string
+  message_count: number
+  last_message_at: string | null
+}
+
+export interface ForumMessage {
+  id: number
+  group_id: number
+  author_name: string
+  body: string
+  created_at: string
+  deleted_at: string | null
+  moderated_by: string | null
+}
+
 export interface ArticleMeta {
   slug: string
   title: string
@@ -147,4 +168,24 @@ export const api = {
     }),
   deleteArticle: (slug: string) =>
     request<{ ok: true }>(`/api/admin/articles/${slug}`, { method: 'DELETE' }),
+  forumGroups: () => request<{ groups: ForumGroup[] }>('/api/admin/forum/groups'),
+  forumMessages: (groupId: number) =>
+    request<{ messages: ForumMessage[] }>(`/api/forum/groups/${groupId}/messages`),
+  createForumGroup: (data: { slug?: string; name: string; description?: string; pinned?: boolean }) =>
+    request<ForumGroup>('/api/admin/forum/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateForumGroup: (id: number, data: Partial<ForumGroup>) =>
+    request<ForumGroup>(`/api/admin/forum/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteForumGroup: (id: number) =>
+    request<{ ok: true }>(`/api/admin/forum/groups/${id}`, { method: 'DELETE' }),
+  deleteForumMessage: (id: number, author?: string) =>
+    request<{ ok: true }>(`/api/admin/forum/messages/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ author: author || 'FRG' }),
+    }),
 }

@@ -1,8 +1,7 @@
 name: trygghetsnod
 
-# Minimal Docker-stack: bara Kiwix-servern för ZIM-innehåll.
+# Docker-stack: Kiwix-serve (ZIM-bibliotek) + Postgres (forum/chat).
 # Portalen och admin-appen körs nativt med Node under utveckling.
-# Portalen når Kiwix via http://localhost:8090 (config.json).
 
 services:
   kiwix:
@@ -23,4 +22,24 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: trygghetsnod_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trygghetsnod
+      POSTGRES_PASSWORD: trygghetsnod_local
+      POSTGRES_DB: trygghetsnod
+    volumes:
+      - ./storage/postgres:/var/lib/postgresql/data
+    # Port 5433 på host — undviker kollision med macOS Postgres.app m.fl.
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trygghetsnod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 10s

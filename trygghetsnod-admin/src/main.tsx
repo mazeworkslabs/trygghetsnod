@@ -5,6 +5,7 @@ import { App } from './App'
 import { Dashboard } from './pages/Dashboard'
 import { Lagesuppdatering } from './pages/Lagesuppdatering'
 import { ArtiklarList, ArtikelEditor } from './pages/Artiklar'
+import { Forum } from './pages/Forum'
 import { Kartmarkorer } from './pages/Kartmarkorer'
 import { Kallor } from './pages/Kallor'
 import { Innehall } from './pages/Innehall'
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="artiklar" element={<ArtiklarList />} />
           <Route path="artiklar/ny" element={<ArtikelEditor />} />
           <Route path="artiklar/:slug" element={<ArtikelEditor />} />
+          <Route path="forum" element={<Forum />} />
           <Route path="kartmarkorer" element={<Kartmarkorer />} />
           <Route path="kallor" element={<Kallor />} />
           <Route path="innehall" element={<Innehall />} />

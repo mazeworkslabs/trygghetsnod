@@ -7,7 +7,8 @@ Räkna med 1 timme inklusive nedladdningar.
 Stacken består av:
 
 - **Kiwix-server** (Docker, port 8090) — serverar ZIM-bibliotek
-- **Portal** (Node, port 8400) — Express + EJS, levererar medborgarsidan, admin-SPA:n och kartor
+- **Postgres** (Docker, port 5433) — lagrar forum (grupper, meddelanden). Port 5433 på host för att undvika konflikt med lokala Postgres-installationer.
+- **Portal** (Node, port 8400) — Express + EJS, levererar medborgarsidan, admin-SPA:n, artiklar, kartor och forum.
 - **Admin** (statiska filer) — React/Vite-app som bundlas in i portalen vid build
 
 ---

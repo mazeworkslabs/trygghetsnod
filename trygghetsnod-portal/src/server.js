@@ -5,6 +5,19 @@ import { fileURLToPath } from 'node:url'
 import QRCode from 'qrcode'
 import matter from 'gray-matter'
 import { marked } from 'marked'
+import cookieParser from 'cookie-parser'
+import {
+  createForumPool,
+  migrateForum,
+  listGroups,
+  getGroupBySlug,
+  listMessages,
+  postMessage,
+  softDeleteMessage,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+} from './forum.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -37,6 +50,15 @@ app.use('/vendor/pmtiles', express.static(join(ROOT, 'node_modules/pmtiles/dist'
 app.use('/vendor/protomaps', express.static(join(ROOT, 'node_modules/protomaps-themes-base/dist')))
 app.use('/tiles', express.static(MAPS_DIR, { acceptRanges: true }))
 app.use(express.json({ limit: '256kb' }))
+app.use(cookieParser())
+
+const forumPool = createForumPool()
+migrateForum(forumPool).catch((err) => {
+  console.error('Forum-migration misslyckades:', err.message)
+})
+
+const readDisplayName = (req) =>
+  String(req.cookies?.tnod_name || '').trim().slice(0, 60)
 
 const KIWIX_BASE_OVERRIDE = process.env.KIWIX_BASE
 
@@ -531,6 +553,119 @@ app.get('/nyheter/:slug', (req, res) => {
   if (!article || !article.published) return res.status(404).send('Artikeln hittades inte')
   const html = marked.parse(article.body)
   res.render('artikel', { config, article, html, formatDate })
+})
+
+// ---- Forum (publikt) ----
+
+app.get('/forum', async (_req, res) => {
+  const config = loadKommunJSON('config.json')
+  const groups = await listGroups(forumPool)
+  res.render('forum', { config, groups, formatDate })
+})
+
+app.get('/forum/:slug', async (req, res) => {
+  const config = loadKommunJSON('config.json')
+  const group = await getGroupBySlug(forumPool, req.params.slug)
+  if (!group) return res.status(404).send('Gruppen finns inte')
+  res.render('forum-grupp', {
+    config,
+    group,
+    displayName: readDisplayName(req),
+    formatDate,
+  })
+})
+
+app.get('/forum/namn-byte', (req, res) => {
+  const config = loadKommunJSON('config.json')
+  res.render('forum-namn', {
+    config,
+    current: readDisplayName(req),
+    redirect: req.query.redirect || '/forum',
+  })
+})
+
+app.post('/forum/namn', (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 60)
+  if (!name) return res.status(400).send('Namn krävs')
+  res.cookie('tnod_name', name, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 3600 * 1000,
+  })
+  const redir = typeof req.body?.redirect === 'string' ? req.body.redirect : '/forum'
+  res.redirect(redir.startsWith('/') ? redir : '/forum')
+})
+
+app.get('/api/forum/groups/:id/messages', async (req, res) => {
+  try {
+    const messages = await listMessages(forumPool, Number(req.params.id))
+    res.json({ messages })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/forum/groups/:id/messages', async (req, res) => {
+  const authorName = readDisplayName(req)
+  if (!authorName) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
+  try {
+    const msg = await postMessage(forumPool, {
+      groupId: Number(req.params.id),
+      authorName,
+      body: req.body?.body,
+    })
+    res.json(msg)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// ---- Forum admin/moderation (localhost-only) ----
+
+app.get('/api/admin/forum/groups', localOnly, async (_req, res) => {
+  const groups = await listGroups(forumPool)
+  res.json({ groups })
+})
+
+app.post('/api/admin/forum/groups', localOnly, async (req, res) => {
+  const body = req.body || {}
+  const slug = slugify(body.slug || body.name || '')
+  if (!slug || !body.name) return res.status(400).json({ error: 'namn krävs' })
+  try {
+    const group = await createGroup(forumPool, {
+      slug,
+      name: String(body.name).trim(),
+      description: String(body.description || '').trim(),
+      pinned: !!body.pinned,
+    })
+    appendLoggbok({ type: 'forum', title: `Grupp skapad: ${group.name}`, author: body.author || 'FRG' })
+    res.json(group)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.put('/api/admin/forum/groups/:id', localOnly, async (req, res) => {
+  try {
+    const group = await updateGroup(forumPool, Number(req.params.id), req.body || {})
+    if (!group) return res.status(404).json({ error: 'gruppen hittades inte' })
+    res.json(group)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.delete('/api/admin/forum/groups/:id', localOnly, async (req, res) => {
+  await deleteGroup(forumPool, Number(req.params.id))
+  appendLoggbok({ type: 'forum', title: `Grupp raderad (#${req.params.id})`, author: req.body?.author || 'FRG' })
+  res.json({ ok: true })
+})
+
+app.delete('/api/admin/forum/messages/:id', localOnly, async (req, res) => {
+  const moderatedBy = String(req.body?.author || '').trim() || 'FRG'
+  await softDeleteMessage(forumPool, Number(req.params.id), moderatedBy)
+  appendLoggbok({ type: 'forum', title: `Meddelande borttaget (#${req.params.id})`, author: moderatedBy })
+  res.json({ ok: true })
 })
 
 app.get('/kartor', (_req, res) => {

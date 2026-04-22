@@ -18,8 +18,13 @@ fi
 echo
 
 echo "=== Endpoints ==="
-curl -s -o /dev/null -w "  http://localhost:8090 (kiwix)   → %{http_code}\n" http://localhost:8090/ || echo "  kiwix: ingen kontakt"
-curl -s -o /dev/null -w "  http://localhost:8400/healthz  → %{http_code}\n" http://localhost:8400/healthz || echo "  portal: ingen kontakt"
+curl -s -o /dev/null -w "  http://localhost:8090 (kiwix)      → %{http_code}\n" http://localhost:8090/ || echo "  kiwix: ingen kontakt"
+curl -s -o /dev/null -w "  http://localhost:8400/healthz     → %{http_code}\n" http://localhost:8400/healthz || echo "  portal: ingen kontakt"
+if docker exec trygghetsnod_postgres pg_isready -U trygghetsnod >/dev/null 2>&1; then
+  echo "  postgres (forum-DB på :5433) → OK"
+else
+  echo "  postgres: ingen kontakt"
+fi
 echo
 
 if curl -sf http://localhost:8400/api/admin/status >/dev/null 2>&1; then

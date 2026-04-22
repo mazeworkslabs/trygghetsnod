@@ -9,11 +9,13 @@
     "dev": "node --watch src/server.js"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
     "gray-matter": "^4.0.3",
     "maplibre-gl": "^5.23.0",
     "marked": "^18.0.2",
+    "pg": "^8.20.0",
     "pmtiles": "^4.4.1",
     "protomaps-themes-base": "^4.5.0",
     "qrcode": "^1.5.4"

@@ -1,11 +1,12 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { Activity, FileText, Globe, Library, MapPin, Newspaper, ScrollText, ExternalLink } from 'lucide-react'
+import { Activity, FileText, Globe, Library, MapPin, MessageSquare, Newspaper, ScrollText, ExternalLink } from 'lucide-react'
 import { cn } from './lib/utils'
 
 const nav = [
   { to: '/', label: 'Översikt', icon: Activity, end: true },
   { to: '/lagesuppdatering', label: 'Lägesuppdatering', icon: FileText },
   { to: '/artiklar', label: 'Artiklar', icon: Newspaper },
+  { to: '/forum', label: 'Forum', icon: MessageSquare },
   { to: '/kartmarkorer', label: 'Kartmarkörer', icon: MapPin },
   { to: '/kallor', label: 'Källor', icon: Globe },
   { to: '/innehall', label: 'Innehåll', icon: Library },
