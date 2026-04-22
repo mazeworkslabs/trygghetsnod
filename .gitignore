@@ -17,6 +17,7 @@ storage/
 # Levande fältdata — skrivs av platsansvarig på enheten, inte produktdata
 kommuner/*/update.json
 kommuner/*/loggbok.jsonl
+kommuner/*/sources.json
 
 # Node
 node_modules/

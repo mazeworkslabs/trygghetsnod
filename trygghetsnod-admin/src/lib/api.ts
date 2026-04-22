@@ -82,6 +82,16 @@ export interface PoiCollection {
   features: PoiFeature[]
 }
 
+export interface SourceBook {
+  slug: string
+  name: string
+  title: string
+  language: string
+  summary: string
+  articleCount: number
+  published: boolean
+}
+
 export const api = {
   status: () => request<SystemStatus>('/api/admin/status'),
   zims: () => request<{ zims: Zim[] }>('/api/admin/zims'),
@@ -103,5 +113,11 @@ export const api = {
     request<{ ok: true; count: number }>('/api/admin/poi', {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+  sources: () => request<{ books: SourceBook[] }>('/api/admin/sources'),
+  saveSources: (published: Record<string, boolean>) =>
+    request<{ ok: true }>('/api/admin/sources', {
+      method: 'PUT',
+      body: JSON.stringify({ published }),
     }),
 }

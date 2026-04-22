@@ -129,10 +129,12 @@ app.get('/', async (_req, res) => {
   const config = loadKommunJSON('config.json')
   const update = loadKommunJSON('update.json')
   const books = await fetchKiwixBooks(config.kiwix_base)
+  const sources = loadSources()
+  const publishedBooks = books.filter(b => sources.published?.[b.slug] ?? (b.language === 'swe'))
   res.render('index', {
     config,
     update,
-    books,
+    books: publishedBooks,
     sev: SEVERITIES[update.severity],
     formatDate,
   })
@@ -238,6 +240,44 @@ app.put('/api/admin/update', localOnly, (req, res) => {
     author: update.author,
   })
   res.json(update)
+})
+
+// ---- Källor (Kiwix-böcker som publiceras på startsidan) ----
+// sources.json: { published: { "<kiwix-slug>": true/false } }
+// Default (om nyckel saknas): böcker med språk=swe är på, andra av.
+
+const loadSources = () => {
+  try { return loadKommunJSON('sources.json') } catch { return { published: {} } }
+}
+
+app.get('/api/admin/sources', localOnly, async (_req, res) => {
+  const config = loadKommunJSON('config.json')
+  const books = await fetchKiwixBooks(config.kiwix_base)
+  const sources = loadSources()
+  const combined = books.map(b => ({
+    slug: b.slug,
+    name: b.name,
+    title: b.title,
+    language: b.language,
+    summary: b.summary,
+    articleCount: b.articleCount,
+    published: sources.published?.[b.slug] ?? (b.language === 'swe'),
+  }))
+  res.json({ books: combined })
+})
+
+app.put('/api/admin/sources', localOnly, (req, res) => {
+  const body = req.body || {}
+  if (!body.published || typeof body.published !== 'object') {
+    return res.status(400).json({ error: 'published-objekt krävs' })
+  }
+  saveKommunJSON('sources.json', { published: body.published })
+  appendLoggbok({
+    type: 'sources',
+    title: `Publicerade källor uppdaterade`,
+    author: String(body.author || '').trim() || 'Platsansvarig',
+  })
+  res.json({ ok: true })
 })
 
 app.get('/api/admin/poi', localOnly, (_req, res) => {
