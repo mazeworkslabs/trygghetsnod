@@ -1,8 +1,10 @@
 import express from 'express'
-import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync, statfsSync, appendFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync, statfsSync, appendFileSync, mkdirSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import QRCode from 'qrcode'
+import matter from 'gray-matter'
+import { marked } from 'marked'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
@@ -131,10 +133,12 @@ app.get('/', async (_req, res) => {
   const books = await fetchKiwixBooks(config.kiwix_base)
   const sources = loadSources()
   const publishedBooks = books.filter(b => sources.published?.[b.slug] ?? (b.language === 'swe'))
+  const articles = listArticles({ onlyPublished: true }).map(({ body: _b, ...rest }) => rest)
   res.render('index', {
     config,
     update,
     books: publishedBooks,
+    articles,
     sev: SEVERITIES[update.severity],
     formatDate,
   })
@@ -242,6 +246,77 @@ app.put('/api/admin/update', localOnly, (req, res) => {
   res.json(update)
 })
 
+// ---- Artiklar (markdown med frontmatter) ----
+// kommuner/<kommun>/artiklar/<slug>.md
+// Frontmatter: title, author, date, published, summary
+
+const articlesDir = () => join(KOMMUN_DIR, 'artiklar')
+
+const slugify = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'artikel'
+
+const asDateString = (v) => {
+  if (!v) return ''
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  const s = String(v).trim()
+  // "2026-04-22T00:00:00.000Z" → "2026-04-22"
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : s
+}
+
+const readArticleFile = (slug) => {
+  const safe = slug.replace(/[^a-z0-9-]/gi, '')
+  const path = join(articlesDir(), `${safe}.md`)
+  if (!existsSync(path)) return null
+  const raw = readFileSync(path, 'utf8')
+  const parsed = matter(raw)
+  return {
+    slug: safe,
+    title: String(parsed.data.title || safe),
+    author: String(parsed.data.author || ''),
+    date: asDateString(parsed.data.date),
+    published: parsed.data.published !== false,
+    summary: String(parsed.data.summary || ''),
+    body: parsed.content || '',
+  }
+}
+
+const listArticles = ({ onlyPublished = false } = {}) => {
+  try {
+    return readdirSync(articlesDir())
+      .filter(f => f.endsWith('.md'))
+      .map(f => readArticleFile(f.replace(/\.md$/, '')))
+      .filter(Boolean)
+      .filter(a => !onlyPublished || a.published)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  } catch { return [] }
+}
+
+const writeArticle = (article) => {
+  mkdirSync(articlesDir(), { recursive: true })
+  const frontmatter = {
+    title: article.title,
+    author: article.author || 'Platsansvarig',
+    date: article.date || new Date().toISOString().slice(0, 10),
+    published: article.published !== false,
+    summary: article.summary || '',
+  }
+  const content = matter.stringify(article.body || '', frontmatter)
+  writeFileSync(join(articlesDir(), `${article.slug}.md`), content)
+}
+
+const deleteArticle = (slug) => {
+  const safe = slug.replace(/[^a-z0-9-]/gi, '')
+  const path = join(articlesDir(), `${safe}.md`)
+  if (existsSync(path)) unlinkSync(path)
+}
+
 // ---- Källor (Kiwix-böcker som publiceras på startsidan) ----
 // sources.json: { published: { "<kiwix-slug>": true/false } }
 // Default (om nyckel saknas): böcker med språk=swe är på, andra av.
@@ -276,6 +351,81 @@ app.put('/api/admin/sources', localOnly, (req, res) => {
     type: 'sources',
     title: `Publicerade källor uppdaterade`,
     author: String(body.author || '').trim() || 'Platsansvarig',
+  })
+  res.json({ ok: true })
+})
+
+// ---- Artiklar admin-API ----
+
+app.get('/api/admin/articles', localOnly, (_req, res) => {
+  const articles = listArticles().map(({ body: _body, ...rest }) => rest)
+  res.json({ articles })
+})
+
+app.get('/api/admin/articles/:slug', localOnly, (req, res) => {
+  const a = readArticleFile(req.params.slug)
+  if (!a) return res.status(404).json({ error: 'hittades inte' })
+  res.json(a)
+})
+
+app.post('/api/admin/articles', localOnly, (req, res) => {
+  const body = req.body || {}
+  if (!body.title) return res.status(400).json({ error: 'title krävs' })
+  let slug = slugify(body.slug || body.title)
+  // Unika slugs — lägg till -2, -3… vid kollision
+  let n = 1
+  while (existsSync(join(articlesDir(), `${slug}.md`))) {
+    n += 1
+    slug = `${slugify(body.slug || body.title)}-${n}`
+  }
+  const article = {
+    slug,
+    title: String(body.title).trim(),
+    author: String(body.author || '').trim() || 'Platsansvarig',
+    date: String(body.date || '').trim() || new Date().toISOString().slice(0, 10),
+    published: body.published !== false,
+    summary: String(body.summary || '').trim(),
+    body: String(body.body || ''),
+  }
+  writeArticle(article)
+  appendLoggbok({
+    type: 'artikel',
+    title: `Ny artikel: ${article.title}`,
+    author: article.author,
+  })
+  res.json(article)
+})
+
+app.put('/api/admin/articles/:slug', localOnly, (req, res) => {
+  const existing = readArticleFile(req.params.slug)
+  if (!existing) return res.status(404).json({ error: 'hittades inte' })
+  const body = req.body || {}
+  const article = {
+    slug: existing.slug,
+    title: String(body.title ?? existing.title).trim(),
+    author: String(body.author ?? existing.author).trim() || 'Platsansvarig',
+    date: String(body.date ?? existing.date).trim(),
+    published: body.published !== undefined ? body.published !== false : existing.published,
+    summary: String(body.summary ?? existing.summary).trim(),
+    body: String(body.body ?? existing.body),
+  }
+  writeArticle(article)
+  appendLoggbok({
+    type: 'artikel',
+    title: `Artikel uppdaterad: ${article.title}`,
+    author: article.author,
+  })
+  res.json(article)
+})
+
+app.delete('/api/admin/articles/:slug', localOnly, (req, res) => {
+  const existing = readArticleFile(req.params.slug)
+  if (!existing) return res.status(404).json({ error: 'hittades inte' })
+  deleteArticle(req.params.slug)
+  appendLoggbok({
+    type: 'artikel',
+    title: `Artikel raderad: ${existing.title}`,
+    author: String(req.body?.author || '').trim() || 'Platsansvarig',
   })
   res.json({ ok: true })
 })
@@ -366,6 +516,21 @@ app.post('/cms', localOnly, (req, res) => {
   }
   saveKommunJSON('update.json', update)
   res.redirect('/cms?saved=1')
+})
+
+app.get('/nyheter', (_req, res) => {
+  const config = loadKommunJSON('config.json')
+  const articles = listArticles({ onlyPublished: true })
+    .map(({ body: _body, ...rest }) => rest)
+  res.render('nyheter', { config, articles, formatDate })
+})
+
+app.get('/nyheter/:slug', (req, res) => {
+  const config = loadKommunJSON('config.json')
+  const article = readArticleFile(req.params.slug)
+  if (!article || !article.published) return res.status(404).send('Artikeln hittades inte')
+  const html = marked.parse(article.body)
+  res.render('artikel', { config, article, html, formatDate })
 })
 
 app.get('/kartor', (_req, res) => {

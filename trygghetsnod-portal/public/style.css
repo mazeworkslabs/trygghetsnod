@@ -204,6 +204,21 @@ body.cms header.site a { color: #fafafa; }
 .hit:hover .hit-title { text-decoration: underline; }
 .hit-title { font-family: var(--serif); font-size: 1.15rem; margin-bottom: 0.25rem; }
 .hit-meta { font-size: 0.85rem; color: var(--ink-soft); font-family: var(--mono); }
+.hit-summary { margin-top: 0.5rem; font-size: 0.95rem; line-height: 1.5; color: var(--ink-soft); font-family: var(--serif); }
+
+.article { max-width: 720px; margin: 0 auto; }
+.article-meta { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+.article h1 { font-family: var(--serif); font-size: 2.2rem; line-height: 1.15; margin: 0 0 1rem; }
+.article-summary { font-family: var(--serif); font-size: 1.2rem; line-height: 1.5; color: var(--ink-soft); margin: 0 0 2rem; font-style: italic; }
+.article-body { font-family: var(--serif); font-size: 1.1rem; line-height: 1.7; }
+.article-body h2 { font-family: var(--serif); font-size: 1.5rem; margin: 2rem 0 0.75rem; font-weight: 500; }
+.article-body h3 { font-family: var(--serif); font-size: 1.2rem; margin: 1.5rem 0 0.5rem; font-weight: 500; }
+.article-body p { margin: 0 0 1rem; }
+.article-body ul, .article-body ol { margin: 0 0 1rem 1.5rem; }
+.article-body li { margin-bottom: 0.35rem; }
+.article-body a { color: var(--ink); text-decoration: underline; }
+.article-body strong { color: var(--ink); }
+.article-body code { font-family: var(--mono); background: rgba(0,0,0,0.04); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 
 /* Print */
 body.print { background: #eee; padding: 2rem; }

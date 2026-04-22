@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nyheter – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <div class="brand-name">Trygghetsnod</div>
+    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
+  </div>
+  <nav><a href="/">Tillbaka till portalen</a></nav>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Nyheter från kommunen</h2>
+    <% if (articles.length === 0) { %>
+      <p>Inga nyheter publicerade ännu.</p>
+    <% } else { %>
+      <ul class="hits">
+        <% articles.forEach(a => { %>
+          <li>
+            <a class="hit" href="/nyheter/<%= a.slug %>">
+              <div class="hit-title"><%= a.title %></div>
+              <div class="hit-meta"><%= a.date %> · <%= a.author %></div>
+              <% if (a.summary) { %>
+                <div class="hit-summary"><%= a.summary %></div>
+              <% } %>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+</body>
+</html>

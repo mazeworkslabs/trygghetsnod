@@ -31,6 +31,12 @@
         <h3>Sök</h3>
         <p>Hitta information i allt lokalt innehåll.</p>
       </a>
+      <% if (typeof articles !== 'undefined' && articles.length > 0) { %>
+        <a class="card" href="/nyheter">
+          <h3>Nyheter</h3>
+          <p><%= articles.length %> <%= articles.length === 1 ? 'publicerad artikel' : 'publicerade artiklar' %> från kommunen.</p>
+        </a>
+      <% } %>
       <a class="card" href="/kartor">
         <h3>Kartor</h3>
         <p>Offline-karta med <%= config.kommun %>s trygghetspunkter.</p>

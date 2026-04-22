@@ -18,6 +18,8 @@ storage/
 kommuner/*/update.json
 kommuner/*/loggbok.jsonl
 kommuner/*/sources.json
+# artiklar/ är kommunens egen data — versionshanteras ej här
+kommuner/*/artiklar/
 
 # Node
 node_modules/

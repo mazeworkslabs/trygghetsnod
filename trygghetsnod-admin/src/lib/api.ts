@@ -82,6 +82,19 @@ export interface PoiCollection {
   features: PoiFeature[]
 }
 
+export interface ArticleMeta {
+  slug: string
+  title: string
+  author: string
+  date: string
+  published: boolean
+  summary: string
+}
+
+export interface Article extends ArticleMeta {
+  body: string
+}
+
 export interface SourceBook {
   slug: string
   name: string
@@ -120,4 +133,18 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ published }),
     }),
+  articles: () => request<{ articles: ArticleMeta[] }>('/api/admin/articles'),
+  article: (slug: string) => request<Article>(`/api/admin/articles/${slug}`),
+  createArticle: (data: Partial<Article>) =>
+    request<Article>('/api/admin/articles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateArticle: (slug: string, data: Partial<Article>) =>
+    request<Article>(`/api/admin/articles/${slug}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteArticle: (slug: string) =>
+    request<{ ok: true }>(`/api/admin/articles/${slug}`, { method: 'DELETE' }),
 }
