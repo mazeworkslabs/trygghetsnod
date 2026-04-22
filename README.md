@@ -49,4 +49,4 @@ Pull requests och issues är välkomna. Fokus just nu ligger på POC och första
 
 ## Licens
 
-[GNU AGPL v3.0](./LICENSE) — se `LICENSE`-filen. Tjänster som körs offentligt ovanpå Trygghetsnod-koden ska också vara öppen källkod. Civic infrastructure förblir civic.
+[Apache License 2.0](./LICENSE) — fri att använda, modifiera och distribuera, även kommersiellt. Inkluderar patent grant. Copyright © 2026 Mazeworks AB. Se `NOTICE` för sammanställning av tredjepartskomponenter.
