@@ -1,0 +1,25 @@
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
+import { App } from './App'
+import { Dashboard } from './pages/Dashboard'
+import { Lagesuppdatering } from './pages/Lagesuppdatering'
+import { Innehall } from './pages/Innehall'
+import { Loggbok } from './pages/Loggbok'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <BrowserRouter basename="/admin">
+      <Routes>
+        <Route element={<App />}>
+          <Route index element={<Dashboard />} />
+          <Route path="lagesuppdatering" element={<Lagesuppdatering />} />
+          <Route path="innehall" element={<Innehall />} />
+          <Route path="loggbok" element={<Loggbok />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  </React.StrictMode>
+)

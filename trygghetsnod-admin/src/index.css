@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply font-sans text-ink antialiased;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv11";
+  }
+  body {
+    @apply bg-paper text-ink;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  h1, h2, h3, h4 {
+    @apply font-sans text-ink;
+    letter-spacing: -0.01em;
+  }
+  a {
+    @apply text-myndig underline-offset-2;
+  }
+}
+
+@layer components {
+  .kicker {
+    @apply font-mono text-[11px] uppercase tracking-[0.16em] text-ink-muted;
+  }
+  .section-rule {
+    @apply border-t border-paper-rule;
+  }
+  .container-wide {
+    @apply mx-auto max-w-wide px-6;
+  }
+  .container-app {
+    @apply mx-auto max-w-[1200px] px-6;
+  }
+  .surface {
+    @apply border border-paper-rule bg-paper;
+  }
+  .surface-warm {
+    @apply border border-paper-rule bg-paper-warm/40;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 border border-ink bg-paper px-4 py-2 font-sans text-sm text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 border border-myndig bg-myndig px-4 py-2 font-sans text-sm text-paper transition-colors hover:bg-myndig-soft disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 font-sans text-sm text-ink-soft transition-colors hover:text-ink hover:bg-paper-warm;
+  }
+  .field-label {
+    @apply font-mono text-[11px] uppercase tracking-widest text-ink-muted;
+  }
+  .field-input {
+    @apply w-full border border-paper-rule bg-paper px-3 py-2 font-sans text-base text-ink focus:border-ink focus:outline-none;
+  }
+  .status-dot {
+    @apply inline-block h-2 w-2 rounded-full;
+  }
+}
