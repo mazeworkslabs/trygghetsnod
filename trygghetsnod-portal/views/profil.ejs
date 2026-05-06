@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Profil – <%= config.kommun %></title>
+<link rel="stylesheet" href="/style.css" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+<meta name="theme-color" content="#1E3A5F" />
+</head>
+<body data-verified="<%= identity.verified ? '1' : '0' %>">
+<%- include('_header', { back: redirect, title: 'Profil', subtitle: 'Trygghetsnod · ' + config.kommun }) %>
+
+<main>
+  <section class="panel profil-panel">
+    <% if (identity.verified) { %>
+      <div class="profil-status profil-status-verified">
+        <span class="profil-status-icon profil-status-icon-verified">&#10003;</span>
+        <div class="profil-status-body">
+          <strong>Verifierad av FRG</strong>
+          <p>Andra ser en blå bock intill ditt namn. Om du byter namn eller bild förlorar du verifieringen.</p>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="profil-status profil-status-unverified">
+        <span class="profil-status-icon profil-status-icon-unverified">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </span>
+        <div class="profil-status-body">
+          <strong>Inte verifierad</strong>
+          <p>FRG kan ge dig en blå bock. Gå till volontärerna på trygghetspunkten.</p>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="profil-avatar-section">
+      <div class="profil-avatar-preview" id="avatar-preview">
+        <% if (viewerAvatar) { %>
+          <img src="<%= viewerAvatar %>" alt="Din profilbild" />
+        <% } else { %>
+          <svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4 21c0-4 4-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        <% } %>
+      </div>
+      <div class="profil-avatar-actions">
+        <label for="avatar-input" class="profil-avatar-btn" id="avatar-upload-label">
+          <%= viewerAvatar ? 'Byt bild' : 'Lägg till bild' %>
+        </label>
+        <input type="file" id="avatar-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden />
+        <% if (viewerAvatar) { %>
+          <button type="button" class="profil-avatar-btn profil-avatar-btn-ghost" id="avatar-remove">Ta bort</button>
+        <% } %>
+        <p class="profil-avatar-hint">Bilden visas i hörnet på alla sidor och bredvid dina inlägg.</p>
+        <p class="profil-avatar-error" id="avatar-error" hidden></p>
+      </div>
+    </div>
+
+    <h2>Visningsnamn</h2>
+    <p class="panel-lead">
+      Namnet syns intill dina inlägg och kommentarer.
+    </p>
+
+    <form class="forum-name-form" action="/forum/namn" method="post" id="name-form">
+      <label for="name">Ditt namn</label>
+      <input id="name" name="name" type="text" required maxlength="60" value="<%= current %>" placeholder="T.ex. Anna från Sulvik" data-original="<%= current %>" />
+      <div class="profil-form-row">
+        <button type="submit">Spara</button>
+        <span class="profil-save-status" id="name-status" hidden></span>
+      </div>
+      <p class="forum-name-hint">Sparas bara i din webbläsare. Inget skickas vidare.</p>
+    </form>
+
+    <% if (identity.verified) { %>
+      <div class="profil-section">
+        <h3>Verifiering</h3>
+        <p>Du verifierades av FRG. Verifieringen kan återkallas av volontärerna.</p>
+        <form action="/forum/namn-clear" method="post" onsubmit="return confirm('Vill du logga ut? Du blir overifierad.')">
+          <input type="hidden" name="redirect" value="<%= redirect %>" />
+          <button type="submit" class="profil-danger">Logga ut</button>
+        </form>
+      </div>
+    <% } %>
+  </section>
+</main>
+
+<footer class="site">
+  <div>Trygghetsnod · <%= config.kommun %></div>
+  <div>Vid akut fara: ring 112</div>
+</footer>
+
+<script>
+(function () {
+  var verified = document.body.dataset.verified === '1';
+
+  // Avatar-upload
+  var input = document.getElementById('avatar-input');
+  var preview = document.getElementById('avatar-preview');
+  var label = document.getElementById('avatar-upload-label');
+  var removeBtn = document.getElementById('avatar-remove');
+  var errEl = document.getElementById('avatar-error');
+
+  function warnIfVerified(action) {
+    if (!verified) return true;
+    return window.confirm(
+      'Du är verifierad av FRG. Om du ' + action + ' förlorar du verifieringen. Vill du fortsätta?'
+    );
+  }
+
+  if (input) {
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      if (!warnIfVerified('byter profilbild')) {
+        input.value = '';
+        return;
+      }
+      errEl.hidden = true;
+      label.textContent = 'Laddar upp…';
+      var fd = new FormData();
+      fd.append('image', file);
+      fetch('/api/profile/avatar', { method: 'POST', body: fd })
+        .then(function (r) {
+          if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Uppladdning misslyckades'); });
+          return r.json();
+        })
+        .then(function () {
+          window.location.reload();
+        })
+        .catch(function (err) {
+          errEl.textContent = err.message;
+          errEl.hidden = false;
+          label.textContent = 'Lägg till bild';
+        });
+    });
+  }
+
+  if (removeBtn) {
+    removeBtn.addEventListener('click', function () {
+      if (!warnIfVerified('tar bort profilbilden')) return;
+      fetch('/api/profile/avatar/clear', { method: 'POST' })
+        .then(function () { window.location.reload(); })
+        .catch(function () {});
+    });
+  }
+
+  // Namn-form: spara via fetch så vi stannar på sidan med "Sparat"-bekräftelse
+  // istället för att kasta ut användaren till en annan vy.
+  var nameForm = document.getElementById('name-form');
+  var nameInput = document.getElementById('name');
+  var nameStatus = document.getElementById('name-status');
+
+  function showStatus(msg, isError) {
+    if (!nameStatus) return;
+    nameStatus.textContent = msg;
+    nameStatus.className = 'profil-save-status' + (isError ? ' is-error' : ' is-ok');
+    nameStatus.hidden = false;
+    if (!isError) {
+      clearTimeout(showStatus._t);
+      showStatus._t = setTimeout(function () { nameStatus.hidden = true; }, 2500);
+    }
+  }
+
+  if (nameForm && nameInput) {
+    nameForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var current = nameInput.value.trim();
+      var original = (nameInput.dataset.original || '').trim();
+      if (!current) return;
+      if (verified && current !== original) {
+        if (!warnIfVerified('byter namn')) return;
+      }
+      fetch('/api/profile/name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: current }),
+      })
+        .then(function (r) {
+          if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Kunde inte spara'); });
+          return r.json();
+        })
+        .then(function (data) {
+          nameInput.dataset.original = data.name;
+          showStatus('Sparat');
+          // Om vi just tappade verifieringen behöver hela sidan laddas om
+          // så headern och badge:n speglar nya statusen.
+          if (data.lostVerification) {
+            setTimeout(function () { window.location.reload(); }, 600);
+          }
+        })
+        .catch(function (err) { showStatus(err.message, true); });
+    });
+  }
+})();
+</script>
+</body>
+</html>

@@ -2,10 +2,12 @@ import express from 'express'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync, statfsSync, appendFileSync, mkdirSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
 import QRCode from 'qrcode'
 import matter from 'gray-matter'
 import { marked } from 'marked'
 import multer from 'multer'
+import sharp from 'sharp'
 import cookieParser from 'cookie-parser'
 import {
   createForumPool,
@@ -13,8 +15,12 @@ import {
   listGroups,
   getGroupBySlug,
   listMessages,
+  listPosts,
+  listReplies,
+  getPost,
   postMessage,
   softDeleteMessage,
+  toggleReaction,
   createGroup,
   updateGroup,
   deleteGroup,
@@ -25,6 +31,15 @@ import {
   revokeToken,
   findActiveToken,
   touchToken,
+  upsertUser,
+  getUser,
+  listUsers,
+  verifyUser,
+  unverifyUser,
+  clearUserVerification,
+  blockUser,
+  unblockUser,
+  listMessagesByUser,
 } from './forum.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -71,31 +86,85 @@ migrateForum(forumPool).catch((err) => {
   console.error('Forum-migration misslyckades:', err.message)
 })
 
+// Säkerställ att en stabil tnod_uid-cookie finns för varje besökare. Den används
+// som primärnyckel i forum_users-tabellen så FRG kan se medborgaren i admin-listan
+// och verifiera dem direkt.
+app.use((req, res, next) => {
+  if (!req.cookies?.tnod_uid) {
+    const uid = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+    res.cookie('tnod_uid', uid, { httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600 * 1000 })
+    req.cookies = req.cookies || {}
+    req.cookies.tnod_uid = uid
+  }
+  next()
+})
+
+// Identitet baseras på forum_users-raden för cookie-uid:n. Upsertar varje request
+// så last_seen_at uppdateras och FRG ser vem som är aktiv just nu.
+app.use(async (req, res, next) => {
+  const uid = String(req.cookies?.tnod_uid || '').trim()
+  const cookieName = String(req.cookies?.tnod_name || '').trim().slice(0, 60)
+  const rawAvatar = String(req.cookies?.tnod_avatar || '').trim()
+  const cookieAvatar = /^\/forum-media\/[\w./-]+\.(jpg|jpeg|png|webp)$/i.test(rawAvatar) ? rawAvatar : ''
+
+  res.locals.viewerUid = uid
+  res.locals.viewerName = cookieName
+  res.locals.viewerAvatar = cookieAvatar
+  res.locals.viewerVerified = false
+  res.locals.viewerRole = 'medborgare'
+
+  // Upsertar bara om användaren har valt namn — annars fyller vi tabellen med tomma rader.
+  if (uid && cookieName) {
+    try {
+      const user = await upsertUser(forumPool, {
+        uid,
+        displayName: cookieName,
+        avatarPath: cookieAvatar,
+      })
+      if (user) {
+        res.locals.viewerName = user.display_name || cookieName
+        res.locals.viewerAvatar = user.avatar_path || cookieAvatar
+        res.locals.viewerVerified = !!user.verified_at
+        res.locals.viewerRole = user.role || 'medborgare'
+      }
+    } catch (e) {
+      // Förstör inte requesten om DB är nere — bara logga.
+      console.error('forum_users upsert failed:', e.message)
+    }
+  }
+  next()
+})
+
 const readDisplayName = (req) =>
   String(req.cookies?.tnod_name || '').trim().slice(0, 60)
 
 const readTokenCookie = (req) => String(req.cookies?.tnod_token || '').trim() || null
 
 const resolveForumIdentity = async (req) => {
-  const secret = readTokenCookie(req)
-  if (secret) {
-    const tok = await findActiveToken(forumPool, secret)
-    if (tok) {
-      touchToken(forumPool, tok.id).catch(() => {})
-      return {
-        name: tok.display_name,
-        role: tok.role,
-        tokenId: tok.id,
-        verified: true,
-      }
-    }
-  }
+  const uid = String(req.cookies?.tnod_uid || '').trim()
   const name = readDisplayName(req)
+  if (uid) {
+    try {
+      const user = await getUser(forumPool, uid)
+      if (user) {
+        return {
+          uid,
+          name: user.display_name || name,
+          role: user.role || 'medborgare',
+          tokenId: null,
+          verified: !!user.verified_at,
+          blocked: !!user.blocked_at,
+        }
+      }
+    } catch {}
+  }
   return {
+    uid,
     name,
     role: isLocalRequest(req) ? 'frg' : 'medborgare',
     tokenId: null,
     verified: false,
+    blocked: false,
   }
 }
 
@@ -269,6 +338,44 @@ app.get('/api/admin/status', localOnly, async (_req, res) => {
   })
 })
 
+app.get('/api/admin/about', localOnly, (_req, res) => {
+  // applied.json skrivs av apply-update.sh på enheten. Saknas på dev-maskiner;
+  // då härleder vi version från git HEAD och ZIM-filsdatum istället.
+  const appliedPath = join(STORAGE_DIR, 'applied.json')
+  let applied = null
+  if (existsSync(appliedPath)) {
+    try { applied = JSON.parse(readFileSync(appliedPath, 'utf8')) } catch {}
+  }
+
+  let gitSha = null
+  let gitDescribe = null
+  try { gitSha = execSync('git rev-parse HEAD', { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch {}
+  try { gitDescribe = execSync('git describe --tags --always --dirty', { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch {}
+
+  let zims = []
+  try {
+    zims = readdirSync(ZIM_DIR)
+      .filter(f => f.endsWith('.zim'))
+      .map(filename => ({
+        filename,
+        modified: statSync(join(ZIM_DIR, filename)).mtime.toISOString(),
+      }))
+      .sort((a, b) => a.filename.localeCompare(b.filename))
+  } catch {}
+
+  res.json({
+    applied,
+    live: {
+      git_sha: gitSha,
+      git_describe: gitDescribe,
+      kommun: KOMMUN,
+      portal_started_at: new Date(STARTED_AT).toISOString(),
+      uptime_seconds: (Date.now() - STARTED_AT) / 1000,
+      zims,
+    },
+  })
+})
+
 app.get('/api/admin/zims', localOnly, (_req, res) => {
   let zims = []
   try {
@@ -348,6 +455,7 @@ const readArticleFile = (slug) => {
     date: asDateString(parsed.data.date),
     published: parsed.data.published !== false,
     summary: String(parsed.data.summary || ''),
+    image: parsed.data.image ? String(parsed.data.image) : '',
     body: parsed.content || '',
   }
 }
@@ -372,6 +480,7 @@ const writeArticle = (article) => {
     published: article.published !== false,
     summary: article.summary || '',
   }
+  if (article.image) frontmatter.image = article.image
   const content = matter.stringify(article.body || '', frontmatter)
   writeFileSync(join(articlesDir(), `${article.slug}.md`), content)
 }
@@ -450,6 +559,7 @@ app.post('/api/admin/articles', localOnly, (req, res) => {
     date: String(body.date || '').trim() || new Date().toISOString().slice(0, 10),
     published: body.published !== false,
     summary: String(body.summary || '').trim(),
+    image: String(body.image || '').trim(),
     body: String(body.body || ''),
   }
   writeArticle(article)
@@ -482,6 +592,7 @@ app.put('/api/admin/articles/:slug', localOnly, (req, res) => {
     date: String(body.date ?? existing.date).trim(),
     published: body.published !== undefined ? body.published !== false : existing.published,
     summary: String(body.summary ?? existing.summary).trim(),
+    image: String(body.image ?? existing.image ?? '').trim(),
     body: String(body.body ?? existing.body),
   }
   writeArticle(article)
@@ -597,12 +708,14 @@ app.post('/api/admin/loggbok', localOnly, (req, res) => {
 // ---- Admin SPA (statiska filer) ----
 
 if (existsSync(ADMIN_DIST)) {
-  app.use('/admin', express.static(ADMIN_DIST, { index: 'index.html' }))
-  app.get('/admin/*', (_req, res) => {
+  // Admin-SPA är localhost-only — annars kan medborgare ladda HTML+JS från sin telefon.
+  // Funktionellt skyddat (alla API-endpoints är localOnly) men exponerar onödigt UI.
+  app.use('/admin', localOnly, express.static(ADMIN_DIST, { index: 'index.html' }))
+  app.get('/admin/*', localOnly, (_req, res) => {
     res.sendFile(join(ADMIN_DIST, 'index.html'))
   })
 } else {
-  app.get('/admin', (_req, res) => {
+  app.get('/admin', localOnly, (_req, res) => {
     res.status(503).type('text/plain').send(
       'Admin-appen är inte byggd. Kör: cd trygghetsnod-admin && npm install && npm run build'
     )
@@ -683,6 +796,20 @@ app.get('/forum/namn-byte', (req, res) => {
   })
 })
 
+// /profil — profil-sidan som öppnas från avatar-ikonen i headern.
+// För nu en enkel sida med visningsnamn + verifieringsstatus.
+// Full profil med avatar-bild + varning vid ändring (#18) byggs i nästa steg.
+app.get('/profil', async (req, res) => {
+  const config = loadKommunJSON('config.json')
+  const identity = await resolveForumIdentity(req)
+  res.render('profil', {
+    config,
+    identity,
+    current: identity.name,
+    redirect: req.query.redirect || '/',
+  })
+})
+
 app.get('/forum/:slug', async (req, res) => {
   const config = loadKommunJSON('config.json')
   const group = await getGroupBySlug(forumPool, req.params.slug)
@@ -699,10 +826,58 @@ app.get('/forum/:slug', async (req, res) => {
   })
 })
 
+app.get('/forum/:slug/p/:postId', async (req, res) => {
+  const config = loadKommunJSON('config.json')
+  const group = await getGroupBySlug(forumPool, req.params.slug)
+  if (!group) return res.status(404).send('Gruppen finns inte')
+  const post = await getPost(forumPool, Number(req.params.postId))
+  if (!post || post.group_id !== group.id) return res.status(404).send('Inlägget finns inte')
+  const mode = await getForumMode(forumPool)
+  const identity = await resolveForumIdentity(req)
+  res.render('forum-post', {
+    config,
+    group,
+    post,
+    mode,
+    identity,
+    displayName: identity.name,
+    formatDate,
+  })
+})
 
-app.post('/forum/namn', (req, res) => {
+app.get('/api/forum/posts/:id', async (req, res) => {
+  try {
+    const post = await getPost(forumPool, Number(req.params.id))
+    if (!post) return res.status(404).json({ error: 'Inlägget finns inte' })
+    res.json({ post })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+
+// Logga ut: rensa både namn- och token-cookien så användaren tappar verifiering.
+app.post('/forum/namn-clear', (req, res) => {
+  res.clearCookie('tnod_name')
+  res.clearCookie('tnod_token')
+  const redir = typeof req.body?.redirect === 'string' ? req.body.redirect : '/'
+  res.redirect(redir.startsWith('/') ? redir : '/')
+})
+
+app.post('/forum/namn', async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 60)
   if (!name) return res.status(400).send('Namn krävs')
+  // Om användaren är verifierad och byter till annat namn än tokenens — clear:a token.
+  // FRG har verifierat en specifik person; ändras namnet är verifieringen ogiltig.
+  const secret = String(req.cookies?.tnod_token || '').trim() || null
+  if (secret) {
+    try {
+      const tok = await findActiveToken(forumPool, secret)
+      if (tok && tok.display_name !== name) {
+        res.clearCookie('tnod_token')
+      }
+    } catch {}
+  }
   res.cookie('tnod_name', name, {
     httpOnly: true,
     sameSite: 'lax',
@@ -712,6 +887,44 @@ app.post('/forum/namn', (req, res) => {
   res.redirect(redir.startsWith('/') ? redir : '/forum')
 })
 
+// Stabil per-användare-nyckel för reaktioner. Verifierade FRG/medborgare via token-id;
+// övriga via display-name + en cookie för att undvika kollisioner mellan personer
+// med samma namn på olika telefoner.
+const reactionUserKey = (identity, req) => {
+  if (identity.tokenId) return `tok:${identity.tokenId}`
+  const cookieUid = String(req.cookies?.tnod_uid || '').slice(0, 64)
+  if (cookieUid) return `uid:${cookieUid}:${identity.name}`
+  return `name:${identity.name}`
+}
+
+const ensureUidCookie = (req, res) => {
+  if (!req.cookies?.tnod_uid) {
+    const uid = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+    res.cookie('tnod_uid', uid, { httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600 * 1000 })
+  }
+}
+
+// Vägg-vyn: bara top-level-posts med reaktioner och reply_count.
+app.get('/api/forum/groups/:id/posts', async (req, res) => {
+  try {
+    const posts = await listPosts(forumPool, Number(req.params.id))
+    res.json({ posts })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Kommentarer på en specifik post.
+app.get('/api/forum/posts/:id/replies', async (req, res) => {
+  try {
+    const replies = await listReplies(forumPool, Number(req.params.id))
+    res.json({ replies })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Bakåtkompabilitet: gamla messages-endpointen finns kvar för admin-flöden.
 app.get('/api/forum/groups/:id/messages', async (req, res) => {
   try {
     const messages = await listMessages(forumPool, Number(req.params.id))
@@ -722,23 +935,197 @@ app.get('/api/forum/groups/:id/messages', async (req, res) => {
 })
 
 app.post('/api/forum/groups/:id/messages', async (req, res) => {
-  const mode = await getForumMode(forumPool)
+  const groupId = Number(req.params.id)
+  let groupRow
+  try {
+    const r = await forumPool.query('SELECT posting_mode FROM forum_groups WHERE id = $1', [groupId])
+    groupRow = r.rows[0]
+  } catch (e) {
+    return res.status(500).json({ error: 'DB-fel' })
+  }
+  if (!groupRow) return res.status(404).json({ error: 'Gruppen finns inte' })
+  const groupMode = groupRow.posting_mode || 'verifierade'
   const identity = await resolveForumIdentity(req)
-  if (mode === 'verifierade' && !identity.verified && !isLocalRequest(req)) {
+  if (identity.blocked && !isLocalRequest(req)) {
+    return res.status(403).json({ error: 'Du är blockerad från att posta i forumet.' })
+  }
+  if (groupMode === 'verifierade' && !identity.verified && !isLocalRequest(req)) {
     return res.status(403).json({
-      error: 'Forumet kräver just nu FRG-verifiering för att posta. Gå till FRG-volontärerna på trygghetspunkten för att få en token.',
+      error: 'Bara verifierade kan posta i den här gruppen. Volontärerna på trygghetspunkten kan verifiera dig.',
     })
   }
   if (!identity.name) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
   try {
+    // Validera image_path: bara våra egna /forum-media/-URL:er accepteras.
+    const rawImage = req.body?.image_path
+    const imagePath = (typeof rawImage === 'string' && /^\/forum-media\/[\w./-]+\.(jpg|jpeg|png|webp)$/i.test(rawImage))
+      ? rawImage : null
     const msg = await postMessage(forumPool, {
       groupId: Number(req.params.id),
       authorName: identity.name,
       authorRole: identity.role,
+      authorUid: identity.uid,
       tokenId: identity.tokenId,
       body: req.body?.body,
+      parentId: req.body?.parent_id ? Number(req.body.parent_id) : null,
+      imagePath,
     })
     res.json(msg)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// ---- Forum image upload ----
+//
+// Medborgare kan ladda upp bilder med sina poster. För att skydda disk + integritet:
+//   - max 12 MB original (mobilkamera-storlek)
+//   - resizas till max 1600px bredd som JPEG q85 (typiskt 100-300 KB)
+//   - bara JPEG/PNG/HEIC/WebP accepteras
+//   - sparas under storage/forum-images/<datum>/<slug>-<stamp>.jpg
+
+const FORUM_IMAGES_DIR = join(STORAGE_DIR, 'forum-images')
+
+const forumImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype)
+    cb(ok ? null : new Error('Bara bildfiler (jpg, png, webp, heic) tillåtna'), ok)
+  },
+})
+
+app.post('/api/forum/images', forumImageUpload.single('image'), async (req, res) => {
+  const identity = await resolveForumIdentity(req)
+  if (!identity.name) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
+  if (!req.file) return res.status(400).json({ error: 'Ingen bild' })
+  try {
+    const day = new Date().toISOString().slice(0, 10)
+    const dir = join(FORUM_IMAGES_DIR, day)
+    mkdirSync(dir, { recursive: true })
+    const slug = slugify(identity.name) || 'bild'
+    const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    const filename = `${slug}-${stamp}.jpg`
+    const fullPath = join(dir, filename)
+    await sharp(req.file.buffer)
+      .rotate() // EXIF-orientering — telefonbilder kommer rätt-vägen
+      .resize({ width: 1600, withoutEnlargement: true })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toFile(fullPath)
+    const url = `/forum-media/${day}/${filename}`
+    res.json({ url })
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.use('/forum-media', express.static(FORUM_IMAGES_DIR, { maxAge: '7d' }))
+
+// ---- Profil-avatar ----
+//
+// Egen avatar för profil-ikonen i headern. Sparas som 400×400 cover-resize JPEG
+// under storage/forum-images/avatars/. Cookie 'tnod_avatar' pekar på filen.
+//
+// Verifieringspolicy: om användaren har en aktiv FRG-token tappar de verifieringen
+// när de byter avatar (eller namn). FRG måste utfärda ny token. Detta är medvetet:
+// FRG verifierar en specifik person — inte deras avatar/namn-kombination.
+
+const forumAvatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype)
+    cb(ok ? null : new Error('Bara bildfiler tillåtna (jpg, png, webp, heic)'), ok)
+  },
+})
+
+app.post('/api/profile/avatar', forumAvatarUpload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Ingen bild' })
+  const uid = String(req.cookies?.tnod_uid || '').trim()
+  try {
+    const dir = join(FORUM_IMAGES_DIR, 'avatars')
+    mkdirSync(dir, { recursive: true })
+    const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    const filename = `avatar-${stamp}.jpg`
+    const fullPath = join(dir, filename)
+    await sharp(req.file.buffer)
+      .rotate()
+      .resize(400, 400, { fit: 'cover', position: 'attention' })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toFile(fullPath)
+    const url = `/forum-media/avatars/${filename}`
+    res.cookie('tnod_avatar', url, { httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600 * 1000 })
+    // Avatar-byte → tappa verifiering (FRG har verifierat den specifika personen,
+    // ändras bilden är verifieringen ogiltig).
+    let lostVerification = false
+    if (uid) {
+      const user = await getUser(forumPool, uid)
+      if (user?.verified_at) {
+        await clearUserVerification(forumPool, uid)
+        lostVerification = true
+      }
+      // Skriv den nya avatarpathen direkt i tabellen så listan i admin har rätt bild.
+      await upsertUser(forumPool, { uid, displayName: user?.display_name || '', avatarPath: url })
+    }
+    res.json({ url, lostVerification })
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.post('/api/profile/avatar/clear', async (req, res) => {
+  res.clearCookie('tnod_avatar')
+  const uid = String(req.cookies?.tnod_uid || '').trim()
+  if (uid) {
+    const user = await getUser(forumPool, uid)
+    if (user?.verified_at) await clearUserVerification(forumPool, uid)
+    await upsertUser(forumPool, { uid, displayName: user?.display_name || '', avatarPath: '' })
+  }
+  res.json({ ok: true })
+})
+
+// JSON-variant av /forum/namn för profil-sidan: stannar kvar med "Sparat"-toast.
+// Samma verifierings-policy: ändrat namn → tappa verifieringen (FRG verifierade
+// en specifik person, byter de namn är verifieringen ogiltig).
+app.post('/api/profile/name', async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 60)
+  if (!name) return res.status(400).json({ error: 'Namn krävs' })
+  const uid = String(req.cookies?.tnod_uid || '').trim()
+  let lostVerification = false
+  if (uid) {
+    const user = await getUser(forumPool, uid)
+    if (user?.verified_at && user.display_name !== name) {
+      await clearUserVerification(forumPool, uid)
+      lostVerification = true
+    }
+    const rawAvatar = String(req.cookies?.tnod_avatar || '').trim()
+    const avatar = /^\/forum-media\/[\w./-]+\.(jpg|jpeg|png|webp)$/i.test(rawAvatar) ? rawAvatar : (user?.avatar_path || '')
+    await upsertUser(forumPool, { uid, displayName: name, avatarPath: avatar })
+  }
+  res.cookie('tnod_name', name, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 3600 * 1000,
+  })
+  res.json({ ok: true, name, lostVerification })
+})
+
+// Reaktion: toggle. POST { emoji: "❤" } → returnerar { active: bool }.
+app.post('/api/forum/messages/:id/reactions', async (req, res) => {
+  const identity = await resolveForumIdentity(req)
+  if (!identity.name) return res.status(400).json({ error: 'Välj ett visningsnamn först' })
+  if (identity.blocked && !isLocalRequest(req)) {
+    return res.status(403).json({ error: 'Du är blockerad från att interagera i forumet.' })
+  }
+  ensureUidCookie(req, res)
+  try {
+    const result = await toggleReaction(forumPool, {
+      messageId: Number(req.params.id),
+      userKey: reactionUserKey(identity, req),
+      authorName: identity.name,
+      emoji: req.body?.emoji,
+    })
+    res.json(result)
   } catch (e) {
     res.status(400).json({ error: e.message })
   }
@@ -805,6 +1192,95 @@ app.put('/api/admin/forum/settings', localOnly, async (req, res) => {
     author: req.body?.author || 'FRG',
   })
   res.json({ mode })
+})
+
+// Admin: lista alla forum_users (medborgare som varit på enheten). FRG väljer
+// person i listan, klickar verifiera. Inga QR-koder, inga tokens.
+app.get('/api/admin/forum/users', localOnly, async (_req, res) => {
+  try {
+    const users = await listUsers(forumPool)
+    res.json({ users })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/admin/forum/users/:uid/verify', localOnly, async (req, res) => {
+  try {
+    const u = await verifyUser(forumPool, req.params.uid, {
+      role: req.body?.role,
+      verifiedBy: req.body?.verified_by,
+    })
+    if (!u) return res.status(404).json({ error: 'Användaren finns inte' })
+    appendLoggbok({
+      type: 'verifiering',
+      title: `Verifierade ${u.display_name} (${u.role})`,
+      author: u.verified_by || 'FRG',
+    })
+    res.json(u)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.post('/api/admin/forum/users/:uid/unverify', localOnly, async (req, res) => {
+  try {
+    const u = await unverifyUser(forumPool, req.params.uid)
+    if (!u) return res.status(404).json({ error: 'Användaren finns inte' })
+    appendLoggbok({
+      type: 'verifiering',
+      title: `Återkallade verifiering för ${u.display_name}`,
+      author: req.body?.author || 'FRG',
+    })
+    res.json(u)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// Detalj per användare: profil + alla deras meddelanden.
+app.get('/api/admin/forum/users/:uid', localOnly, async (req, res) => {
+  try {
+    const user = await getUser(forumPool, req.params.uid)
+    if (!user) return res.status(404).json({ error: 'Användaren finns inte' })
+    const messages = await listMessagesByUser(forumPool, req.params.uid)
+    res.json({ user, messages })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/admin/forum/users/:uid/block', localOnly, async (req, res) => {
+  try {
+    const u = await blockUser(forumPool, req.params.uid, {
+      blockedBy: req.body?.blocked_by,
+      reason: req.body?.reason,
+    })
+    if (!u) return res.status(404).json({ error: 'Användaren finns inte' })
+    appendLoggbok({
+      type: 'block',
+      title: `Blockerade ${u.display_name}${u.block_reason ? ': ' + u.block_reason : ''}`,
+      author: u.blocked_by || 'FRG',
+    })
+    res.json(u)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.post('/api/admin/forum/users/:uid/unblock', localOnly, async (req, res) => {
+  try {
+    const u = await unblockUser(forumPool, req.params.uid)
+    if (!u) return res.status(404).json({ error: 'Användaren finns inte' })
+    appendLoggbok({
+      type: 'block',
+      title: `Återkallade blockering för ${u.display_name}`,
+      author: req.body?.author || 'FRG',
+    })
+    res.json(u)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
 })
 
 app.get('/api/admin/forum/tokens', localOnly, async (_req, res) => {
@@ -893,12 +1369,124 @@ app.get('/sok', async (req, res) => {
   res.render('sok', { config, q, hits, total })
 })
 
+// CSP som blockerar externa nätverksanrop (tracking, externa CDN m.m.).
+// Inline-scripts och eval tillåts eftersom de scrapade sajterna behöver det,
+// men allt nätverksanrop tvingas till samma origin = portalen själv.
+const SAFE_CSP =
+  "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+  "connect-src 'self'; " +
+  "img-src 'self' data: blob:; " +
+  "font-src 'self' data:; " +
+  "frame-src 'none'; " +
+  "object-src 'none'"
+
+// Trygghetsnod är en publik kiosk på lokalt wifi. Vi vill aldrig:
+//   - att en scrapad sajt sätter cookies eller läser localStorage
+//   - att medborgaren får en cookie-banner att klicka på (meningslös här)
+//   - att data läcker till externa servrar (separat löst via CSP)
+//
+// CSS:en täcker välkända selektorer. JS:en täcker resten genom att
+// (1) neutralisera cookie/storage-API:erna, och
+// (2) köra en MutationObserver som döljer fixed/modal-overlays vars text
+//     handlar om cookies/kakor/consent — oavsett vilken sajt vi scrapar.
+const HIDE_COOKIE_BANNERS_CSS = `
+<style id="tnod-cookie-shield">
+  /* Kända ramverk — snabbväg utan att vänta på MutationObserver. */
+  dialog.sv-cookie-consent-modal,
+  div[id="Cookiebanner"],
+  .sv-marketplace-sitevision-cookie-consent,
+  [class*="cookie-banner"], [class*="cookie-consent"], [class*="cookie-notice"],
+  [id*="cookie-banner"], [id*="cookie-consent"], [id*="cookie-notice"],
+  [class*="CookieBanner"], [class*="CookieConsent"],
+  .cmplz-cookiebanner, #onetrust-banner-sdk, .ot-sdk-container,
+  #CybotCookiebotDialog, #cookiebanner, .cc-window, .cookie-law-info-bar,
+  [aria-label*="cookie" i], [aria-label*="kakor" i], [aria-label*="consent" i] {
+    display: none !important;
+  }
+  /* Återställ scroll-lås som vissa banners sätter på body. */
+  html, body { overflow: auto !important; }
+</style>`
+
+// Körs överst i <head>, före allt sajt-eget JS. Tar bort cookie/storage-API:t
+// och döljer cookie-relaterade overlays som dyker upp dynamiskt.
+const COOKIE_SHIELD_JS = `
+<script id="tnod-cookie-shield-js">(function () {
+  // 1) Cookies kan inte skrivas eller läsas. Sajter som testar consent-cookies
+  //    får tomma svar och faller tillbaka till "no consent" — kombinerat med
+  //    CSS:en betyder det att bannern aldrig syns.
+  try {
+    Object.defineProperty(document, 'cookie', {
+      get: function () { return '' },
+      set: function () { return true },
+      configurable: false,
+    })
+  } catch (e) {}
+
+  // 2) localStorage/sessionStorage neutraliseras (många banners använder dem).
+  var noopStorage = {
+    getItem: function () { return null },
+    setItem: function () {},
+    removeItem: function () {},
+    clear: function () {},
+    key: function () { return null },
+    length: 0,
+  }
+  try { Object.defineProperty(window, 'localStorage',  { value: noopStorage, configurable: false }) } catch (e) {}
+  try { Object.defineProperty(window, 'sessionStorage', { value: noopStorage, configurable: false }) } catch (e) {}
+
+  // 3) Generisk overlay-städare. Söker efter top-level fixed/sticky-element
+  //    vars textinnehåll handlar om cookies — det är så banners ser ut oavsett
+  //    bibliotek. Körs vid varje DOM-mutation och stannar efter 30 s.
+  var TEXT_RE = /\\b(cookie|cookies|kakor|samtycke|consent|gdpr)\\b/i
+  function looksLikeBanner(el) {
+    if (!el || el.nodeType !== 1) return false
+    var text = (el.textContent || '').slice(0, 600)
+    if (!TEXT_RE.test(text)) return false
+    var s = getComputedStyle(el)
+    if (s.position !== 'fixed' && s.position !== 'sticky' && el.tagName !== 'DIALOG') return false
+    var rect = el.getBoundingClientRect()
+    if (rect.width < 200 || rect.height < 60) return false
+    return true
+  }
+  function sweep() {
+    var nodes = document.body ? document.body.querySelectorAll('div, section, aside, dialog, nav') : []
+    for (var i = 0; i < nodes.length; i++) {
+      if (looksLikeBanner(nodes[i])) {
+        nodes[i].style.setProperty('display', 'none', 'important')
+      }
+    }
+  }
+  function start() {
+    sweep()
+    var mo = new MutationObserver(sweep)
+    if (document.body) mo.observe(document.body, { childList: true, subtree: true })
+    setTimeout(function () { mo.disconnect() }, 30000)
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start)
+  } else {
+    start()
+  }
+})();</script>`
+
 app.use('/innehall', async (req, res) => {
   const config = loadKommunJSON('config.json')
   const kiwixPath = req.originalUrl.replace(/^\/innehall/, '/content')
   const kiwixUrl = config.kiwix_base + kiwixPath
   try {
-    const response = await fetch(kiwixUrl)
+    // Vi måste hantera Kiwix:s redirects manuellt — om vi följer dem tyst (default)
+    // serveras slutsvaret under den ursprungliga URL:en, vilket bryter relativa
+    // länkar (CSS/JS) eftersom browserns base path inte stämmer med ZIM-strukturen.
+    const response = await fetch(kiwixUrl, { redirect: 'manual' })
+    if (response.status >= 300 && response.status < 400) {
+      const loc = response.headers.get('location')
+      if (loc) {
+        const rewritten = loc.startsWith('/content/')
+          ? loc.replace(/^\/content\//, '/innehall/')
+          : loc
+        return res.redirect(response.status, rewritten)
+      }
+    }
     const ct = response.headers.get('content-type') || ''
     res.status(response.status)
     if (ct.includes('text/html')) {
@@ -906,7 +1494,9 @@ app.use('/innehall', async (req, res) => {
       html = html.replace(/href="\/content\//g, 'href="/innehall/')
       html = html.replace(/src="\/content\//g, 'src="/innehall/')
       const banner = `<div id="tnod-banner" style="position:fixed;top:0;left:0;right:0;z-index:999999;background:#1a1a1a;color:#fafafa;padding:0.6rem 1.2rem;font-family:system-ui,sans-serif;font-size:0.9rem;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,0.2);"><span><strong style="font-family:Georgia,serif;">Trygghetsnod</strong> &middot; ${config.kommun}</span><span><a href="/sok" style="color:#fafafa;margin-right:1rem;">Sök</a><a href="/" style="color:#fafafa;">&larr; Portalen</a></span></div><div style="height:2.6rem"></div>`
+      html = html.replace(/<head([^>]*)>/i, `<head$1>${COOKIE_SHIELD_JS}${HIDE_COOKIE_BANNERS_CSS}`)
       html = html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
+      res.set('Content-Security-Policy', SAFE_CSP)
       res.type('html').send(html)
     } else {
       res.type(ct)
@@ -923,6 +1513,21 @@ app.get('/qr.png', async (_req, res) => {
   const wifiString = `WIFI:T:nopass;S:${config.wifi_ssid};;`
   const buf = await QRCode.toBuffer(wifiString, { width: 512, margin: 2 })
   res.type('png').send(buf)
+})
+
+// Generisk QR-generator för admin (verktyg-sida). text + valfri size + ec.
+app.get('/api/admin/qr.png', localOnly, async (req, res) => {
+  const text = String(req.query.text || '').slice(0, 2000)
+  if (!text) return res.status(400).type('text/plain').send('text-parameter krävs')
+  const size = Math.min(Math.max(Number(req.query.size) || 512, 100), 1200)
+  const ec = ['L', 'M', 'Q', 'H'].includes(String(req.query.ec)) ? String(req.query.ec) : 'M'
+  try {
+    const buf = await QRCode.toBuffer(text, { width: size, margin: 2, errorCorrectionLevel: ec })
+    res.set('Cache-Control', 'no-store')
+    res.type('png').send(buf)
+  } catch (e) {
+    res.status(400).type('text/plain').send(e.message)
+  }
 })
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, kommun: KOMMUN }))

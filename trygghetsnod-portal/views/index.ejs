@@ -14,12 +14,7 @@
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}</script>
 </head>
 <body>
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-</header>
+<%- include('_header', { title: 'Trygghetsnod', subtitle: config.kommun + ' · ' + config.plats }) %>
 
 <main>
   <section class="update sev-<%= update.severity %>">
@@ -31,6 +26,35 @@
     </div>
   </section>
 
+  <% if (typeof articles !== 'undefined' && articles.length > 0) { %>
+    <section class="panel">
+      <div class="news-section-head">
+        <h2>Senaste från kommunen</h2>
+        <% if (articles.length > 3) { %>
+          <a href="/nyheter" class="news-section-all">Alla nyheter →</a>
+        <% } %>
+      </div>
+      <ul class="news-list">
+        <% articles.slice(0, 3).forEach(a => { %>
+          <li>
+            <a class="news-card" href="/nyheter/<%= a.slug %>">
+              <% if (a.image) { %>
+                <div class="news-thumb"><img src="<%= a.image %>" alt="" loading="lazy" /></div>
+              <% } %>
+              <div class="news-body">
+                <div class="news-meta"><%= a.date %> · <%= a.author %></div>
+                <h3 class="news-title"><%= a.title %></h3>
+                <% if (a.summary) { %>
+                  <p class="news-summary"><%= a.summary %></p>
+                <% } %>
+              </div>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+  <% } %>
+
   <section class="panel">
     <h2>Information och verktyg</h2>
     <div class="cards">
@@ -38,15 +62,9 @@
         <h3>Sök</h3>
         <p>Hitta information i allt lokalt innehåll.</p>
       </a>
-      <% if (typeof articles !== 'undefined' && articles.length > 0) { %>
-        <a class="card" href="/nyheter">
-          <h3>Nyheter</h3>
-          <p><%= articles.length %> <%= articles.length === 1 ? 'publicerad artikel' : 'publicerade artiklar' %> från kommunen.</p>
-        </a>
-      <% } %>
       <a class="card" href="/forum">
         <h3>Forum</h3>
-        <p>Skriv till andra som är här. FRG-volontärer modererar.</p>
+        <p>Skriv till andra i kommunen. FRG modererar.</p>
       </a>
       <a class="card" href="/kartor">
         <h3>Kartor</h3>
@@ -61,10 +79,6 @@
     </div>
   </section>
 
-  <section class="panel panel-compact">
-    <div>Ingen internet? Det är normalt här. All information nedan är lokal.</div>
-    <div><a href="/print">Skriv ut aktuell lägesuppdatering (A4)</a></div>
-  </section>
 </main>
 
 <footer class="site">

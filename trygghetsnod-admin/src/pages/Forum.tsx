@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pin, PinOff, MessageSquare, ExternalLink, X, Lock, Unlock, BadgeCheck, QrCode } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Trash2, Pin, PinOff, MessageSquare, ExternalLink, X, Lock, Unlock, BadgeCheck, User, Ban, Pencil, Save } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { api, type ForumGroup, type ForumMessage, type ForumToken } from '@/lib/api'
+import { ConfirmButton } from '@/components/ConfirmButton'
+import { VerifyDialog } from '@/components/VerifyDialog'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { api, type ForumGroup, type ForumMessage, type ForumUser } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
 
 type Tab = 'grupper' | 'verifiering'
@@ -14,7 +18,7 @@ export function Forum() {
       <PageHeader
         kicker="Forum"
         title="Moderering, verifiering och grupper"
-        description="FRG-volontärer modererar meddelanden, skapar grupper, verifierar medborgare och styr om forumet är öppet eller bara för verifierade."
+        description="Modering, grupper och verifiering."
       />
 
       <div className="mb-6 flex gap-1 border-b border-paper-rule">
@@ -95,7 +99,6 @@ function GrupperTab() {
   }
 
   const removeGroup = async (g: ForumGroup) => {
-    if (!window.confirm(`Radera gruppen "${g.name}"? Alla meddelanden (${g.message_count} st) försvinner också. Går inte att ångra.`)) return
     try {
       await api.deleteForumGroup(g.id)
       if (selected?.id === g.id) setSelected(null)
@@ -218,57 +221,55 @@ function GrupperTab() {
 }
 
 function VerifieringTab() {
-  const [mode, setMode] = useState<'oppet' | 'verifierade' | null>(null)
-  const [tokens, setTokens] = useState<ForumToken[] | null>(null)
+  const [users, setUsers] = useState<ForumUser[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ display_name: '', role: 'medborgare' as 'medborgare' | 'frg', issued_by: 'FRG' })
-  const [creating, setCreating] = useState(false)
-  const [showQr, setShowQr] = useState<ForumToken | null>(null)
+  const [filter, setFilter] = useState<'alla' | 'overifierade' | 'verifierade' | 'blockerade'>('alla')
+  const [search, setSearch] = useState('')
+  const [issuedBy] = useState('FRG')
+  const [verifyTarget, setVerifyTarget] = useState<ForumUser | null>(null)
+  const [unverifyTarget, setUnverifyTarget] = useState<ForumUser | null>(null)
 
-  const reload = () => Promise.all([
-    api.forumSettings().then(({ mode }) => setMode(mode)),
-    api.forumTokens().then(({ tokens }) => setTokens(tokens)),
-  ]).catch(e => setError(e.message))
+  const reload = () =>
+    api.forumUsers().then(({ users }) => setUsers(users)).catch(e => setError(e.message))
 
   useEffect(() => { reload() }, [])
+  useEffect(() => {
+    const id = setInterval(reload, 8000)
+    return () => clearInterval(id)
+  }, [])
 
-  const toggleMode = async () => {
-    const next: 'oppet' | 'verifierade' = mode === 'verifierade' ? 'oppet' : 'verifierade'
+  const verify = async () => {
+    if (!verifyTarget) return
     try {
-      await api.saveForumSettings(next)
-      setMode(next)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-
-  const createToken = async () => {
-    if (!form.display_name.trim()) return
-    setCreating(true)
-    try {
-      const tok = await api.createForumToken(form)
-      setForm({ display_name: '', role: 'medborgare', issued_by: form.issued_by })
+      await api.verifyUser(verifyTarget.uid, { role: 'medborgare', verified_by: issuedBy })
+      setVerifyTarget(null)
       await reload()
-      setShowQr(tok)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setCreating(false)
-    }
+    } catch (e) { setError((e as Error).message) }
   }
-
-  const revoke = async (t: ForumToken) => {
-    if (!window.confirm(`Återkalla token för "${t.display_name}"? De förlorar sin blå bock och kan inte posta längre (om läget är verifierade).`)) return
+  const unverify = async () => {
+    if (!unverifyTarget) return
     try {
-      await api.revokeForumToken(t.id)
+      await api.unverifyUser(unverifyTarget.uid)
+      setUnverifyTarget(null)
       await reload()
-    } catch (e) {
-      setError((e as Error).message)
-    }
+    } catch (e) { setError((e as Error).message) }
   }
 
-  const activeTokens = tokens?.filter(t => !t.revoked_at) || []
-  const revoked = tokens?.filter(t => t.revoked_at) || []
+  const visibleUsers = (users || [])
+    .filter(u => {
+      if (filter === 'alla') return true
+      if (filter === 'verifierade') return !!u.verified_at && !u.blocked_at
+      if (filter === 'blockerade') return !!u.blocked_at
+      return !u.verified_at && !u.blocked_at
+    })
+    .filter(u => !search || u.display_name.toLowerCase().includes(search.toLowerCase()))
+
+  const counts = {
+    alla: users?.length ?? 0,
+    overifierade: users?.filter(u => !u.verified_at && !u.blocked_at).length ?? 0,
+    verifierade: users?.filter(u => u.verified_at && !u.blocked_at).length ?? 0,
+    blockerade: users?.filter(u => u.blocked_at).length ?? 0,
+  }
 
   return (
     <div>
@@ -279,177 +280,120 @@ function VerifieringTab() {
         </div>
       )}
 
-      {/* Mode-toggle */}
       <div className="surface mb-6 p-6">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <div className="kicker mb-2">Postningsläge</div>
-            {mode === 'verifierade' ? (
-              <div>
-                <div className="flex items-center gap-2 font-sans text-lg font-medium text-ink">
-                  <Lock className="h-4 w-4 text-warning" />
-                  Endast verifierade får posta
-                </div>
-                <p className="mt-1 font-serif text-[15px] text-ink-soft">
-                  Alla kan läsa forumet, men bara medborgare med FRG-utställd token kan skriva.
-                  Använd vid trollattack, polariserad situation, eller akut nödläge.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-2 font-sans text-lg font-medium text-ink">
-                  <Unlock className="h-4 w-4 text-myndig" />
-                  Öppet för alla
-                </div>
-                <p className="mt-1 font-serif text-[15px] text-ink-soft">
-                  Alla på trygghetspunktens wifi kan skriva i forumet efter att ha valt ett visningsnamn. Verifierade får blå bock.
-                </p>
-              </div>
-            )}
-          </div>
-          <button className="btn-primary" onClick={toggleMode} disabled={mode === null}>
-            {mode === 'verifierade' ? 'Öppna för alla' : 'Endast verifierade'}
-          </button>
-        </div>
-      </div>
-
-      {/* Ny token */}
-      <div className="surface mb-6 p-6">
-        <div className="kicker mb-3">Verifiera en medborgare</div>
-        <p className="mb-4 font-serif text-[15px] text-ink-soft">
-          Personen står framför dig, uppger sitt visningsnamn, och du skapar en token.
-          Sedan visar du QR-koden för personen — skanning på deras telefon ger blå bock.
+        <div className="kicker mb-2">Verifiera medborgare</div>
+        <p className="mb-3 font-serif text-[15px] text-ink-soft">
+          Personen står framför dig. Hitta dem i listan på namn och bild, klicka <strong>Verifiera</strong>.
+          De får genast en blå bock på sin telefon. Klicka på namnet för full profil.
         </p>
-        <div className="grid gap-4 md:grid-cols-[1fr_180px_180px_auto]">
-          <div>
-            <label className="field-label">Namn personen uppgav</label>
-            <input
-              className="field-input mt-2"
-              value={form.display_name}
-              onChange={(e) => setForm({ ...form, display_name: e.target.value })}
-              placeholder="T.ex. Anna från Sulvik"
-            />
-          </div>
-          <div>
-            <label className="field-label">Roll</label>
-            <select
-              className="field-input mt-2"
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as 'medborgare' | 'frg' })}
-            >
-              <option value="medborgare">Medborgare (blå bock)</option>
-              <option value="frg">FRG-volontär</option>
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Utfärdat av</label>
-            <input
-              className="field-input mt-2"
-              value={form.issued_by}
-              onChange={(e) => setForm({ ...form, issued_by: e.target.value })}
-              placeholder="Din signatur"
-            />
-          </div>
-          <button
-            className="btn-primary mt-7"
-            onClick={createToken}
-            disabled={creating || !form.display_name.trim()}
+        <div className="grid gap-3 md:grid-cols-[1fr_240px]">
+          <input
+            className="field-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Sök på namn…"
+          />
+          <select
+            className="field-input"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as typeof filter)}
           >
-            <Plus className="h-3.5 w-3.5" />
-            {creating ? 'Skapar…' : 'Skapa & visa QR'}
-          </button>
+            <option value="alla">Alla ({counts.alla})</option>
+            <option value="overifierade">Overifierade ({counts.overifierade})</option>
+            <option value="verifierade">Verifierade ({counts.verifierade})</option>
+            <option value="blockerade">Blockerade ({counts.blockerade})</option>
+          </select>
         </div>
       </div>
 
-      {/* Aktiva tokens */}
-      <div>
-        <h3 className="kicker mb-3">Aktiva tokens · {activeTokens.length}</h3>
-        {!tokens ? (
-          <div className="surface p-6 text-center font-serif text-ink-soft">Hämtar…</div>
-        ) : activeTokens.length === 0 ? (
-          <div className="surface p-8 text-center font-serif text-ink-soft">Inga verifierade medborgare än.</div>
-        ) : (
-          <ul className="space-y-2">
-            {activeTokens.map(t => (
-              <li key={t.id} className="surface flex items-center justify-between gap-4 p-4">
-                <div className="min-w-0">
+      {!users ? (
+        <div className="surface p-6 text-center font-serif text-ink-soft">Hämtar…</div>
+      ) : visibleUsers.length === 0 ? (
+        <div className="surface p-8 text-center font-serif text-ink-soft">
+          {search ? 'Ingen matchar sökningen.' : 'Inga användare här.'}
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {visibleUsers.map(u => (
+            <li key={u.uid} className={cn('surface flex items-center gap-3 p-3', u.blocked_at && 'opacity-70')}>
+              <Link to={`/users/${u.uid}`} className="flex flex-1 items-center gap-3 no-underline hover:opacity-80">
+                <UserAvatar user={u} />
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 font-sans text-[15px]">
-                    <span className="font-medium">{t.display_name}</span>
-                    {t.role === 'frg' ? (
+                    <span className="font-medium text-ink">{u.display_name}</span>
+                    {u.verified_at && u.role === 'frg' && (
                       <span className="rounded-sm bg-myndig px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">FRG</span>
-                    ) : (
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1da1f2] text-[10px] font-bold text-white" title="Blå bock">✓</span>
+                    )}
+                    {u.verified_at && u.role !== 'frg' && (
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1da1f2] text-[10px] font-bold text-white" title="Verifierad">✓</span>
+                    )}
+                    {u.blocked_at && (
+                      <span className="flex items-center gap-1 rounded-sm bg-accent-brick px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-white">
+                        <Ban className="h-2.5 w-2.5" /> Blockerad
+                      </span>
                     )}
                   </div>
-                  <div className="mt-1 font-mono text-xs text-ink-muted">
-                    Utfärdat av {t.issued_by} · {formatDate(t.issued_at)}
-                    {t.last_used_at && ` · senast aktiv ${formatDate(t.last_used_at)}`}
+                  <div className="mt-0.5 font-mono text-xs text-ink-muted">
+                    Senast aktiv {formatDate(u.last_seen_at)}
+                    {u.verified_at && !u.blocked_at && ` · verifierad ${formatDate(u.verified_at)}`}
+                    {u.blocked_at && ` · blockerad av ${u.blocked_by}`}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="btn-ghost" onClick={() => setShowQr(t)}>
-                    <QrCode className="h-3.5 w-3.5" />
-                    QR
-                  </button>
-                  <button className="btn-ghost text-accent-brick" onClick={() => revoke(t)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Återkalla
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {revoked.length > 0 && (
-          <details className="mt-6">
-            <summary className="cursor-pointer font-mono text-xs uppercase tracking-wider text-ink-muted">
-              {revoked.length} återkallade tokens
-            </summary>
-            <ul className="mt-3 space-y-2">
-              {revoked.map(t => (
-                <li key={t.id} className="surface p-3 opacity-60">
-                  <div className="font-sans text-sm">{t.display_name}</div>
-                  <div className="font-mono text-xs text-ink-muted">Återkallad {formatDate(t.revoked_at!)}</div>
-                </li>
+              </Link>
+              {!u.blocked_at && (u.verified_at ? (
+                <button className="btn-ghost text-accent-brick" onClick={() => setUnverifyTarget(u)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Återkalla
+                </button>
+              ) : (
+                <button className="btn-ghost" onClick={() => setVerifyTarget(u)}>
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  Verifiera
+                </button>
               ))}
-            </ul>
-          </details>
-        )}
-      </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      {showQr && <QrModal token={showQr} onClose={() => setShowQr(null)} />}
+      {verifyTarget && (
+        <VerifyDialog
+          user={verifyTarget}
+          open={!!verifyTarget}
+          onClose={() => setVerifyTarget(null)}
+          onConfirm={verify}
+        />
+      )}
+
+      {unverifyTarget && (
+        <ConfirmDialog
+          open={!!unverifyTarget}
+          onClose={() => setUnverifyTarget(null)}
+          onConfirm={unverify}
+          kicker="Återkalla verifiering"
+          title={`Återkalla för ${unverifyTarget.display_name || 'användaren'}?`}
+          description="Personen tappar sin blå bock i forumet. Du kan verifiera dem igen senare om du ändrar dig."
+          confirmLabel="Återkalla"
+          variant="danger"
+        />
+      )}
     </div>
   )
 }
 
-function QrModal({ token, onClose }: { token: ForumToken; onClose: () => void }) {
-  const qrUrl = `/api/admin/forum/tokens/${token.id}/qr?host=${encodeURIComponent(window.location.origin)}`
+function UserAvatar({ user }: { user: ForumUser }) {
+  if (user.avatar_path) {
+    return (
+      <img
+        src={user.avatar_path}
+        alt=""
+        className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
+      />
+    )
+  }
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6"
-      onClick={onClose}
-    >
-      <div className="surface max-w-sm p-8 text-center" onClick={(e) => e.stopPropagation()}>
-        <div className="kicker mb-2">Visa för medborgaren</div>
-        <div className="flex items-center justify-center gap-2 font-serif text-2xl">
-          {token.display_name}
-          {token.role === 'frg' ? (
-            <span className="rounded-sm bg-myndig px-2 py-0.5 font-mono text-xs font-semibold uppercase tracking-wider text-white">FRG</span>
-          ) : (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1da1f2] text-xs font-bold text-white">✓</span>
-          )}
-        </div>
-        <p className="mt-2 font-serif text-[15px] text-ink-soft">
-          Be personen skanna QR-koden med sin telefonkamera. Det sätter en verifieringskaka på deras enhet.
-        </p>
-        <div className="mx-auto my-5 border border-paper-rule bg-white p-3">
-          <img src={qrUrl} alt="QR-kod" className="h-[300px] w-[300px]" />
-        </div>
-        <button className="btn-primary w-full justify-center" onClick={onClose}>
-          Klart
-        </button>
-      </div>
+    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-paper-rule text-ink-muted">
+      <User className="h-5 w-5" />
     </div>
   )
 }
@@ -476,42 +420,144 @@ function GroupMessages({
     return () => clearInterval(id)
   }, [group.id])
 
+  const togglePostingMode = async () => {
+    const next: 'oppet' | 'verifierade' = group.posting_mode === 'verifierade' ? 'oppet' : 'verifierade'
+    try {
+      await api.updateForumGroup(group.id, { posting_mode: next } as any)
+      onChange()
+    } catch (e) {
+      console.error('Kunde inte ändra läge:', (e as Error).message)
+    }
+  }
+
+  // Redigeringsläge för gruppmetadata (namn + beskrivning).
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(group.name)
+  const [editDesc, setEditDesc] = useState(group.description)
+  const [editSaving, setEditSaving] = useState(false)
+  // Synka edit-state om vi byter grupp eller om gruppen uppdateras externt
+  useEffect(() => {
+    setEditName(group.name)
+    setEditDesc(group.description)
+    setEditing(false)
+  }, [group.id])
+
+  const saveEdit = async () => {
+    setEditSaving(true)
+    try {
+      await api.updateForumGroup(group.id, { name: editName.trim(), description: editDesc.trim() })
+      setEditing(false)
+      onChange()
+    } catch (e) {
+      console.error('Kunde inte spara grupp:', (e as Error).message)
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   const removeMessage = async (m: ForumMessage) => {
     if (m.deleted_at) return
-    if (!window.confirm(`Ta bort meddelande från "${m.author_name}"?\n\n"${m.body.slice(0, 100)}${m.body.length > 100 ? '…' : ''}"`)) return
     try {
       await api.deleteForumMessage(m.id, 'FRG')
       await load()
       onChange()
     } catch (e) {
-      alert((e as Error).message)
+      // Visas inte i UI just nu — konsolen räcker tills vi har ett toast-system globalt.
+      console.error('Kunde inte ta bort:', (e as Error).message)
     }
   }
 
   return (
     <div className="surface p-6">
-      <div className="mb-4 flex items-start justify-between gap-4 border-b border-paper-rule pb-4">
-        <div>
+      <div className="mb-4 flex flex-col gap-3 border-b border-paper-rule pb-4">
+        <div className="min-w-0">
           <div className="kicker">Grupp · {group.slug}</div>
-          <h2 className="mt-1 font-serif text-2xl">{group.name}</h2>
-          {group.description && (
-            <p className="mt-1 font-serif text-[15px] text-ink-soft">{group.description}</p>
+          {editing ? (
+            <div className="mt-2 space-y-3">
+              <input
+                className="field-input font-serif text-xl"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Gruppnamn"
+              />
+              <textarea
+                className="field-input font-serif"
+                rows={2}
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                placeholder="Kort beskrivning som syns för medborgaren"
+              />
+              <div className="flex gap-2">
+                <button className="btn-primary" onClick={saveEdit} disabled={editSaving || !editName.trim()}>
+                  <Save className="h-3.5 w-3.5" />
+                  {editSaving ? 'Sparar…' : 'Spara'}
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => { setEditName(group.name); setEditDesc(group.description); setEditing(false) }}
+                >
+                  Avbryt
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h2 className="mt-1 font-serif text-2xl">{group.name}</h2>
+              {group.description && (
+                <p className="mt-1 font-serif text-[15px] text-ink-soft">{group.description}</p>
+              )}
+            </>
           )}
         </div>
-        <div className="flex gap-2">
-          <a href={`/forum/${group.slug}`} target="_blank" rel="noreferrer" className="btn-ghost" title="Öppna publikt">
-            <ExternalLink className="h-3.5 w-3.5" />
-            Publikt
-          </a>
-          <button className="btn-ghost" onClick={onPin} title={group.pinned ? 'Ta bort fastnålning' : 'Fastnåla'}>
-            {group.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {group.pinned ? 'Lossa' : 'Fastnåla'}
-          </button>
-          <button className="btn-ghost text-accent-brick" onClick={onDelete} title="Radera gruppen">
-            <Trash2 className="h-3.5 w-3.5" />
-            Radera
-          </button>
+        {!editing && (
+          <div className="flex flex-wrap gap-2">
+            <a href={`/forum/${group.slug}`} target="_blank" rel="noreferrer" className="btn-ghost" title="Öppna publikt">
+              <ExternalLink className="h-3.5 w-3.5" />
+              Publikt
+            </a>
+            <button className="btn-ghost" onClick={() => setEditing(true)} title="Redigera namn och beskrivning">
+              <Pencil className="h-3.5 w-3.5" />
+              Redigera
+            </button>
+            <button className="btn-ghost" onClick={onPin} title={group.pinned ? 'Ta bort fastnålning' : 'Fastnåla'}>
+              {group.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+              {group.pinned ? 'Lossa' : 'Fastnåla'}
+            </button>
+            <ConfirmButton
+              onConfirm={onDelete}
+              prompt={`Radera gruppen och ${group.message_count} meddelanden?`}
+              confirmLabel="Radera"
+              variant="danger"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Radera
+            </ConfirmButton>
+          </div>
+        )}
+      </div>
+
+      {/* Postningsläge per grupp */}
+      <div className="mb-4 flex items-start justify-between gap-4 rounded border border-paper-rule bg-paper-warm/20 p-3">
+        <div className="flex items-start gap-3">
+          {group.posting_mode === 'verifierade' ? (
+            <Lock className="mt-0.5 h-4 w-4 text-warning" />
+          ) : (
+            <Unlock className="mt-0.5 h-4 w-4 text-myndig" />
+          )}
+          <div>
+            <div className="font-sans text-sm font-medium">
+              {group.posting_mode === 'verifierade' ? 'Endast verifierade får posta' : 'Öppet för alla'}
+            </div>
+            <p className="mt-0.5 font-serif text-[14px] leading-snug text-ink-soft">
+              {group.posting_mode === 'verifierade'
+                ? 'Bara medborgare med blå bock kan skriva i denna grupp. Alla kan läsa.'
+                : 'Alla med ett visningsnamn kan skriva i denna grupp.'}
+            </p>
+          </div>
         </div>
+        <button className="btn-ghost flex-shrink-0" onClick={togglePostingMode}>
+          {group.posting_mode === 'verifierade' ? 'Öppna för alla' : 'Endast verifierade'}
+        </button>
       </div>
 
       {messages === null ? (
@@ -527,7 +573,17 @@ function GroupMessages({
               <li key={m.id} className={cn('border-l-2 p-3', m.deleted_at ? 'border-accent-brick/40 bg-accent-brick/5' : isFrg ? 'border-myndig bg-myndig-tint/30' : 'border-paper-rule')}>
                 <div className="flex items-baseline justify-between gap-4">
                   <div className="flex items-baseline gap-2">
-                    <span className="font-sans text-sm font-medium">{m.author_name}</span>
+                    {m.author_uid ? (
+                      <Link
+                        to={`/users/${m.author_uid}`}
+                        className="font-sans text-sm font-medium text-ink no-underline hover:text-myndig"
+                        title="Öppna användaren"
+                      >
+                        {m.author_name}
+                      </Link>
+                    ) : (
+                      <span className="font-sans text-sm font-medium">{m.author_name}</span>
+                    )}
                     {isVerified && !isFrg && (
                       <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#1da1f2] text-[9px] font-bold text-white" title="Verifierad">✓</span>
                     )}
@@ -537,9 +593,15 @@ function GroupMessages({
                     <span className="font-mono text-xs text-ink-muted">{formatDate(m.created_at)}</span>
                   </div>
                   {!m.deleted_at && (
-                    <button onClick={() => removeMessage(m)} className="text-ink-muted hover:text-accent-brick" title="Ta bort meddelande">
+                    <ConfirmButton
+                      onConfirm={() => removeMessage(m)}
+                      prompt="Ta bort?"
+                      confirmLabel="Ja"
+                      variant="danger"
+                      className="!p-1"
+                    >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </ConfirmButton>
                   )}
                 </div>
                 {m.deleted_at ? (

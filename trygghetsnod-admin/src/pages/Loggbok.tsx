@@ -113,8 +113,7 @@ export function Loggbok() {
         <div className="surface p-8 text-center font-serif text-ink-soft">Hämtar…</div>
       ) : entries.length === 0 ? (
         <div className="surface p-8 text-center font-serif text-ink-soft">
-          Loggboken är tom — den fylls när du sparar lägesuppdateringar, redigerar kartan eller
-          skriver anteckningar här.
+          Loggboken är tom. Den fylls när du sparar lägesuppdateringar, redigerar kartan eller skriver anteckningar.
         </div>
       ) : (
         <ol className="space-y-3">

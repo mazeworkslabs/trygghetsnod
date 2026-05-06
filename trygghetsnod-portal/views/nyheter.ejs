@@ -7,13 +7,7 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav><a href="/">Tillbaka till portalen</a></nav>
-</header>
+<%- include('_header', { back: '/', title: 'Nyheter', subtitle: 'Trygghetsnod · ' + config.kommun }) %>
 
 <main>
   <section class="panel">
@@ -21,15 +15,20 @@
     <% if (articles.length === 0) { %>
       <p>Inga nyheter publicerade ännu.</p>
     <% } else { %>
-      <ul class="hits">
+      <ul class="news-list">
         <% articles.forEach(a => { %>
           <li>
-            <a class="hit" href="/nyheter/<%= a.slug %>">
-              <div class="hit-title"><%= a.title %></div>
-              <div class="hit-meta"><%= a.date %> · <%= a.author %></div>
-              <% if (a.summary) { %>
-                <div class="hit-summary"><%= a.summary %></div>
+            <a class="news-card" href="/nyheter/<%= a.slug %>">
+              <% if (a.image) { %>
+                <div class="news-thumb"><img src="<%= a.image %>" alt="" loading="lazy" /></div>
               <% } %>
+              <div class="news-body">
+                <div class="news-meta"><%= a.date %> · <%= a.author %></div>
+                <h3 class="news-title"><%= a.title %></h3>
+                <% if (a.summary) { %>
+                  <p class="news-summary"><%= a.summary %></p>
+                <% } %>
+              </div>
             </a>
           </li>
         <% }) %>

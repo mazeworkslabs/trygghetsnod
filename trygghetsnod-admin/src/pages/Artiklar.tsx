@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Plus, Save, Trash2, ArrowLeft, Eye, EyeOff, Image } from 'lucide-react'
+import { Plus, Save, Trash2, ArrowLeft, Eye, EyeOff, Image, Printer } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { MarkdownEditor } from '@/components/MarkdownEditor'
 import { api, type Article, type ArticleMeta } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
 
@@ -18,7 +19,7 @@ export function ArtiklarList() {
       <PageHeader
         kicker="Artiklar"
         title="Nyheter från kommunen"
-        description="Egna artiklar som visas under /nyheter. Utkast kan skrivas i lugn och ro och publiceras när de är klara."
+        description="Egna artiklar som visas på /nyheter. Utkast kan sparas och publiceras senare."
         actions={
           <Link to="/artiklar/ny" className="btn-primary">
             <Plus className="h-3.5 w-3.5" />
@@ -78,17 +79,16 @@ export function ArtikelEditor() {
   const { slug } = useParams<{ slug?: string }>()
   const isNew = !slug || slug === 'ny'
   const navigate = useNavigate()
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const [data, setData] = useState<Article | null>(isNew
-    ? { slug: '', title: '', author: 'Platsansvarig', date: today, published: false, summary: '', body: '' }
+    ? { slug: '', title: '', author: 'Platsansvarig', date: today, published: false, summary: '', image: '', body: '' }
     : null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [uploadingHero, setUploadingHero] = useState(false)
+  const heroFileRef = useRef<HTMLInputElement>(null)
   const [slugEditable, setSlugEditable] = useState(false)
 
   useEffect(() => {
@@ -117,37 +117,20 @@ export function ArtikelEditor() {
     }
   }
 
-  const insertAtCursor = (text: string) => {
+  const onHeroSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!data) return
-    const el = bodyRef.current
-    if (!el) {
-      setData({ ...data, body: data.body + text })
-      return
-    }
-    const start = el.selectionStart ?? el.value.length
-    const end = el.selectionEnd ?? start
-    const next = el.value.slice(0, start) + text + el.value.slice(end)
-    setData({ ...data, body: next })
-    setTimeout(() => {
-      el.focus()
-      const pos = start + text.length
-      el.setSelectionRange(pos, pos)
-    }, 0)
-  }
-
-  const onImageSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    setUploading(true)
+    setUploadingHero(true)
     setError(null)
     try {
-      const { url, filename } = await api.uploadArticleImage(f)
-      insertAtCursor(`\n\n![${filename}](${url})\n\n`)
+      const { url } = await api.uploadArticleImage(f)
+      setData({ ...data, image: url })
     } catch (err) {
       setError((err as Error).message)
     } finally {
-      setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
+      setUploadingHero(false)
+      if (heroFileRef.current) heroFileRef.current.value = ''
     }
   }
 
@@ -185,7 +168,7 @@ export function ArtikelEditor() {
       <PageHeader
         kicker={isNew ? 'Ny artikel' : 'Redigera artikel'}
         title={data.title || (isNew ? 'Skriv en rubrik' : 'Artikel')}
-        description="Markdown stöds i brödtexten. Utkast syns bara i admin — medborgaren ser bara publicerade artiklar."
+        description="Utkast syns bara här. Medborgaren ser bara publicerade artiklar."
         actions={
           <div className="flex items-center gap-2">
             {!isNew && (
@@ -233,38 +216,72 @@ export function ArtikelEditor() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between">
-                <label className="field-label">Text (markdown)</label>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="btn-ghost"
-                  disabled={uploading}
-                >
-                  <Image className="h-3.5 w-3.5" />
-                  {uploading ? 'Laddar upp…' : 'Infoga bild'}
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={onImageSelected}
+              <label className="field-label">Brödtext</label>
+              <div className="mt-2">
+                <MarkdownEditor
+                  value={data.body}
+                  onChange={(body) => setData({ ...data, body })}
+                  height="500px"
+                  placeholder="Skriv din artikel här. Använd toolbar ovan för formatering. Bilder kan dras in direkt och laddas upp automatiskt."
+                  onUploadImage={async (file) => {
+                    const { url } = await api.uploadArticleImage(file)
+                    return url
+                  }}
                 />
               </div>
-              <textarea
-                ref={bodyRef}
-                className="field-input mt-2 font-mono text-sm leading-relaxed"
-                rows={18}
-                value={data.body}
-                onChange={(e) => setData({ ...data, body: e.target.value })}
-                placeholder="## Underrubrik&#10;&#10;Fri text. **Fet** och _kursiv_ stöds.&#10;&#10;- Punktlistor&#10;- Länkar: [text](url)&#10;- Bild: ![alt](url) — eller klicka 'Infoga bild' ovan"
-              />
             </div>
           </div>
         </div>
 
         <aside className="space-y-4">
+          <div className="surface p-5">
+            <div className="kicker mb-3">Bild</div>
+            {data.image ? (
+              <div className="space-y-3">
+                <img src={data.image} alt="" className="w-full rounded border border-paper-rule" />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-ghost flex-1"
+                    onClick={() => heroFileRef.current?.click()}
+                    disabled={uploadingHero}
+                  >
+                    <Image className="h-3.5 w-3.5" />
+                    Byt
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setData({ ...data, image: '' })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Ta bort
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn-ghost w-full justify-center"
+                onClick={() => heroFileRef.current?.click()}
+                disabled={uploadingHero}
+              >
+                <Image className="h-3.5 w-3.5" />
+                {uploadingHero ? 'Laddar upp…' : 'Lägg till bild'}
+              </button>
+            )}
+            <input
+              ref={heroFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onHeroSelected}
+            />
+            <p className="mt-2 font-serif text-[13px] leading-snug text-ink-soft">
+              Visas högst upp i artikeln och som thumbnail i nyhetslistan.
+            </p>
+          </div>
+
           <div className="surface-warm p-5">
             <div className="kicker mb-3">Publicering</div>
             <label className="flex cursor-pointer items-start gap-3">
@@ -330,14 +347,29 @@ export function ArtikelEditor() {
           </div>
 
           {!isNew && data.published && (
-            <a
-              href={`/nyheter/${data.slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-ghost w-full justify-center"
-            >
-              Öppna publikt →
-            </a>
+            <div className="space-y-2">
+              <a
+                href={`/nyheter/${data.slug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost w-full justify-center"
+              >
+                Öppna publikt →
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  // Öppna artikel-sidan i ny flik med ?print=1 — en liten skript där
+                  // kallar window.print() automatiskt när sidan är klar.
+                  window.open(`/nyheter/${data.slug}?print=1`, '_blank', 'noopener')
+                }}
+                className="btn-ghost w-full justify-center"
+                title="Öppnar artikeln med utskriftsdialogen direkt"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Skriv ut som A4
+              </button>
+            </div>
           )}
         </aside>
       </div>

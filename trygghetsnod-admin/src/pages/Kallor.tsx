@@ -57,7 +57,7 @@ export function Kallor() {
       <PageHeader
         kicker="Källor"
         title="Vad medborgaren ser på startsidan"
-        description="Varje Kiwix-bok på enheten kan visas eller döljas som innehållskort. Allt förblir sökbart i /sok — det här styr bara vilka genvägar som syns direkt."
+        description="Välj vilka böcker som visas som genvägar på startsidan. Allt förblir sökbart oavsett."
         actions={
           <button className="btn-primary" onClick={save} disabled={saving || !dirty}>
             <Save className="h-3.5 w-3.5" />

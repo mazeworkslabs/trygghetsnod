@@ -15,51 +15,40 @@
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}</script>
 </head>
 <body>
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav><a href="/">Tillbaka till portalen</a></nav>
-</header>
+<%- include('_header', { back: '/', title: 'Forum', subtitle: config.kommun }) %>
 
-<main>
-  <section class="panel">
-    <h2>Forum</h2>
-    <p class="panel-lead">
-      Här kan du skriva till andra som är här. Alla inlägg är offentliga. FRG-volontärer är
-      administratörer och kan ta bort olämpliga meddelanden. Ring 112 vid akut fara.
-    </p>
-    <% if (mode === 'verifierade') { %>
-      <div class="forum-gate">
-        <strong>Skrivläge: endast verifierade.</strong>
-        Du kan läsa allt fritt. För att posta inlägg behöver du en token från FRG-volontärerna.
-      </div>
-    <% } %>
+<main class="wall-main">
+  <% if (mode === 'verifierade') { %>
+    <div class="wall-gate">
+      <strong>Skrivläge: endast verifierade.</strong>
+      Du kan läsa allt fritt. För att posta inlägg behöver du en token från FRG-volontärerna.
+    </div>
+  <% } %>
 
-    <% if (groups.length === 0) { %>
-      <p>Inga grupper finns än.</p>
-    <% } else { %>
-      <ul class="forum-groups">
-        <% groups.forEach(g => { %>
-          <li>
-            <a class="forum-group" href="/forum/<%= g.slug %>">
-              <div class="forum-group-head">
-                <h3><%= g.name %><% if (g.pinned) { %> <span class="pin">fastnålad</span><% } %></h3>
-                <div class="forum-group-count"><%= g.message_count %> inlägg</div>
-              </div>
+  <% if (groups.length === 0) { %>
+    <p>Inga grupper finns än.</p>
+  <% } else { %>
+    <ul class="group-list">
+      <% groups.forEach(g => { %>
+        <li>
+          <a class="group-card" href="/forum/<%= g.slug %>">
+            <div class="group-card-body">
+              <h3 class="group-card-name"><%= g.name %></h3>
               <% if (g.description) { %>
-                <p class="forum-group-desc"><%= g.description %></p>
+                <p class="group-card-desc"><%= g.description %></p>
               <% } %>
-              <% if (g.last_message_at) { %>
-                <div class="forum-group-last">Senaste: <%= formatDate(g.last_message_at) %></div>
-              <% } %>
-            </a>
-          </li>
-        <% }) %>
-      </ul>
-    <% } %>
-  </section>
+              <div class="group-card-meta">
+                <%= g.message_count %> inlägg<% if (g.last_message_at) { %> · senast <%= formatDate(g.last_message_at) %><% } %>
+              </div>
+            </div>
+            <svg class="group-card-arrow" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
 </main>
 
 <footer class="site">

@@ -35,15 +35,7 @@
 </style>
 </head>
 <body class="kartor">
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav>
-    <a href="/">Tillbaka till portalen</a>
-  </nav>
-</header>
+<%- include('_header', { back: '/', title: 'Kartor', subtitle: 'Trygghetsnod · ' + config.kommun }) %>
 
 <main>
   <div class="map-overlay">

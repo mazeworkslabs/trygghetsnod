@@ -10,6 +10,9 @@ import { Kartmarkorer } from './pages/Kartmarkorer'
 import { Kallor } from './pages/Kallor'
 import { Innehall } from './pages/Innehall'
 import { Loggbok } from './pages/Loggbok'
+import { Om } from './pages/Om'
+import { UserDetail } from './pages/UserDetail'
+import { QrTool } from './pages/QrTool'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -27,6 +30,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="kallor" element={<Kallor />} />
           <Route path="innehall" element={<Innehall />} />
           <Route path="loggbok" element={<Loggbok />} />
+          <Route path="om" element={<Om />} />
+          <Route path="users/:uid" element={<UserDetail />} />
+          <Route path="qr" element={<QrTool />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

@@ -7,16 +7,13 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav><a href="/nyheter">Alla nyheter</a> · <a href="/">Portalen</a></nav>
-</header>
+<%- include('_header', { back: '/nyheter', title: 'Nyhet', subtitle: 'Trygghetsnod · ' + config.kommun }) %>
 
 <main>
   <article class="panel article">
+    <% if (article.image) { %>
+      <div class="article-hero"><img src="<%= article.image %>" alt="" /></div>
+    <% } %>
     <div class="article-meta"><%= article.date %> · <%= article.author %></div>
     <h1><%= article.title %></h1>
     <% if (article.summary) { %>
@@ -30,5 +27,12 @@
   <div>Trygghetsnod · <%= config.kommun %></div>
   <div>Vid akut fara: ring 112</div>
 </footer>
+<script>
+  // Om sidan öppnats med ?print=1 (från admin "Skriv ut"-knappen) — auto-trigga
+  // utskriftsdialogen så användaren slipper själv klicka Cmd+P.
+  if (location.search.includes('print=1')) {
+    addEventListener('load', function () { setTimeout(function () { window.print() }, 300) })
+  }
+</script>
 </body>
 </html>

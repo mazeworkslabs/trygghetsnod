@@ -88,9 +88,40 @@ export interface ForumGroup {
   name: string
   description: string
   pinned: boolean
+  posting_mode: 'verifierade' | 'oppet'
   created_at: string
   message_count: number
   last_message_at: string | null
+}
+
+export interface ForumUser {
+  uid: string
+  display_name: string
+  avatar_path: string
+  role: 'medborgare' | 'frg'
+  verified_at: string | null
+  verified_by: string | null
+  created_at: string
+  last_seen_at: string
+  blocked_at: string | null
+  blocked_by: string | null
+  block_reason: string | null
+}
+
+export interface ForumUserMessage {
+  id: number
+  group_id: number
+  parent_id: number | null
+  author_name: string
+  author_role: 'medborgare' | 'frg'
+  body: string
+  image_path: string | null
+  created_at: string
+  deleted_at: string | null
+  moderated_by: string | null
+  group_name: string
+  group_slug: string
+  verified: boolean
 }
 
 export interface ForumToken {
@@ -107,9 +138,12 @@ export interface ForumToken {
 export interface ForumMessage {
   id: number
   group_id: number
+  parent_id?: number | null
   author_name: string
   author_role?: 'medborgare' | 'frg'
+  author_uid?: string | null
   body: string
+  image_path?: string | null
   created_at: string
   deleted_at: string | null
   moderated_by: string | null
@@ -122,6 +156,7 @@ export interface ArticleMeta {
   date: string
   published: boolean
   summary: string
+  image?: string
 }
 
 export interface Article extends ArticleMeta {
@@ -138,8 +173,29 @@ export interface SourceBook {
   published: boolean
 }
 
+export interface AboutInfo {
+  applied: {
+    version: string
+    released_at?: string
+    applied_at?: string
+    code?: { git_sha?: string; git_tag?: string }
+    storage?: { zim?: { filename: string; sha256?: string }[]; pmtiles?: { filename: string; sha256?: string }[] }
+    notes?: string
+    backup_dir?: string
+  } | null
+  live: {
+    git_sha: string | null
+    git_describe: string | null
+    kommun: string
+    portal_started_at: string
+    uptime_seconds: number
+    zims: { filename: string; modified: string }[]
+  }
+}
+
 export const api = {
   status: () => request<SystemStatus>('/api/admin/status'),
+  about: () => request<AboutInfo>('/api/admin/about'),
   zims: () => request<{ zims: Zim[] }>('/api/admin/zims'),
   update: () => request<Update>('/api/admin/update'),
   saveUpdate: (data: Omit<Update, 'updated_at'>) =>
@@ -215,6 +271,29 @@ export const api = {
     request<{ mode: string }>('/api/admin/forum/settings', {
       method: 'PUT',
       body: JSON.stringify({ mode, author: author || 'FRG' }),
+    }),
+  forumUsers: () => request<{ users: ForumUser[] }>('/api/admin/forum/users'),
+  verifyUser: (uid: string, data: { role?: 'medborgare' | 'frg'; verified_by?: string }) =>
+    request<ForumUser>(`/api/admin/forum/users/${uid}/verify`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unverifyUser: (uid: string, author?: string) =>
+    request<ForumUser>(`/api/admin/forum/users/${uid}/unverify`, {
+      method: 'POST',
+      body: JSON.stringify({ author: author || 'FRG' }),
+    }),
+  forumUser: (uid: string) =>
+    request<{ user: ForumUser; messages: ForumUserMessage[] }>(`/api/admin/forum/users/${uid}`),
+  blockUser: (uid: string, data: { blocked_by?: string; reason?: string }) =>
+    request<ForumUser>(`/api/admin/forum/users/${uid}/block`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unblockUser: (uid: string, author?: string) =>
+    request<ForumUser>(`/api/admin/forum/users/${uid}/unblock`, {
+      method: 'POST',
+      body: JSON.stringify({ author: author || 'FRG' }),
     }),
   forumTokens: () => request<{ tokens: ForumToken[] }>('/api/admin/forum/tokens'),
   createForumToken: (data: { display_name: string; role?: 'medborgare' | 'frg'; issued_by?: string }) =>

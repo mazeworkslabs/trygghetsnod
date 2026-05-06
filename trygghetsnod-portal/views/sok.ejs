@@ -7,13 +7,7 @@
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav><a href="/">Tillbaka till portalen</a></nav>
-</header>
+<%- include('_header', { back: '/', title: 'Sök', subtitle: 'Trygghetsnod · ' + config.kommun }) %>
 
 <main>
   <section class="panel">

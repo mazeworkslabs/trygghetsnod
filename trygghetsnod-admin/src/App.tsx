@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { Activity, FileText, Globe, Library, MapPin, MessageSquare, Newspaper, ScrollText, ExternalLink } from 'lucide-react'
+import { Activity, FileText, Globe, Info, Library, MapPin, MessageSquare, Newspaper, QrCode, ScrollText, ExternalLink } from 'lucide-react'
 import { cn } from './lib/utils'
 
 const nav = [
@@ -11,6 +11,8 @@ const nav = [
   { to: '/kallor', label: 'Källor', icon: Globe },
   { to: '/innehall', label: 'Innehåll', icon: Library },
   { to: '/loggbok', label: 'Loggbok', icon: ScrollText },
+  { to: '/qr', label: 'QR-kod', icon: QrCode },
+  { to: '/om', label: 'Om enheten', icon: Info },
 ]
 
 export function App() {

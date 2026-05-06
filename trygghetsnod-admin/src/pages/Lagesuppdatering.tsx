@@ -55,7 +55,7 @@ export function Lagesuppdatering() {
       <PageHeader
         kicker="Lägesuppdatering"
         title="Vad medborgaren ser"
-        description="Skriv kort. Texten visas i portalens startsida och på A4-utskriften som skrivs ut för dem som inte har en telefon."
+        description="Skriv kort. Texten visas på portalens startsida och i A4-utskriften."
       />
 
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-[1fr_320px]">

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title><%= group.name %> – Forum – <%= config.kommun %></title>
+<title><%= group.name %> – <%= config.kommun %></title>
 <link rel="stylesheet" href="/style.css" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -14,63 +14,59 @@
 <meta name="apple-mobile-web-app-title" content="Trygghetsnod" />
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}</script>
 </head>
-<body data-name="<%= displayName %>">
-<header class="site">
-  <div class="brand">
-    <div class="brand-name">Trygghetsnod</div>
-    <div class="brand-sub"><%= config.kommun %> · <%= config.plats %></div>
-  </div>
-  <nav><a href="/forum">Tillbaka till forum</a></nav>
-</header>
+<body data-name="<%= displayName %>" data-group-id="<%= group.id %>" data-group-slug="<%= group.slug %>" data-can-post="<%= ((mode !== 'verifierade') || identity.verified) && displayName ? '1' : '0' %>" data-role="<%= identity.role %>" data-verified="<%= identity.verified ? '1' : '0' %>">
+<%- include('_header', { back: '/forum', title: group.name, subtitle: 'Trygghetsnod · ' + config.kommun }) %>
 
-<main>
-  <section class="panel forum-chat-panel">
-    <div class="forum-group-head">
-      <h2><%= group.name %></h2>
-      <% if (group.description) { %>
-        <p class="forum-group-desc"><%= group.description %></p>
-      <% } %>
-    </div>
-
-    <% if (mode === 'verifierade' && !identity.verified) { %>
-      <div class="forum-gate">
-        <strong>Endast verifierade får posta just nu.</strong>
-        Gå till FRG-volontärerna på trygghetspunkten. De skapar en token åt dig som du scannar med telefonen (QR-kod) — sedan kan du skriva.
-        Alla kan läsa utan token.
-      </div>
-    <% } else if (!displayName) { %>
-      <form class="forum-name-form" action="/forum/namn" method="post">
-        <label for="name">Välj ett visningsnamn för att skriva i forumet</label>
-        <input id="name" name="name" type="text" required maxlength="60" placeholder="T.ex. Anna från Sulvik" />
-        <input type="hidden" name="redirect" value="/forum/<%= group.slug %>" />
-        <button type="submit">Sätt namn</button>
-        <p class="forum-name-hint">Namnet sparas i din webbläsare. Du kan ändra det senare. Ingen registrering, ingen uppgift sparas utanför trygghetsnoden.</p>
-      </form>
-    <% } %>
-
-    <ul id="messages" class="forum-messages" data-group-id="<%= group.id %>"></ul>
-
-    <% const canPost = (mode !== 'verifierade') || identity.verified %>
-    <% if (canPost && displayName) { %>
-      <form id="post-form" class="forum-post-form">
-        <div class="forum-post-meta">
-          Skriver som <strong><%= displayName %></strong>
-          <% if (identity.verified && identity.role !== 'frg') { %>
-            <span class="forum-verified-inline" title="Verifierad hos FRG">&#10003; Verifierad</span>
-          <% } %>
-          <% if (identity.role === 'frg') { %>
-            <span class="forum-role-badge">FRG</span>
-          <% } %>
-          <% if (!identity.verified) { %>
-            · <a href="/forum/namn-byte?redirect=/forum/<%= group.slug %>">byt namn</a>
-          <% } %>
-        </div>
-        <textarea id="post-body" rows="3" maxlength="2000" placeholder="Skriv ditt meddelande…" required></textarea>
-        <button type="submit">Skicka</button>
-        <div id="post-error" class="forum-error" hidden></div>
-      </form>
+<main class="wall-main">
+  <section class="wall-head">
+    <h1><%= group.name %></h1>
+    <% if (group.description) { %>
+      <p class="wall-desc"><%= group.description %></p>
     <% } %>
   </section>
+
+  <% if (mode === 'verifierade' && !identity.verified) { %>
+    <div class="wall-gate">
+      <strong>Bara verifierade kan posta här.</strong>
+      Volontärerna på trygghetspunkten kan verifiera dig. Alla kan läsa.
+    </div>
+  <% } else if (!displayName) { %>
+    <form class="wall-name-form" action="/forum/namn" method="post">
+      <label for="name">Välj ett namn för att skriva i flödet</label>
+      <input id="name" name="name" type="text" required maxlength="60" placeholder="T.ex. Anna" />
+      <input type="hidden" name="redirect" value="/forum/<%= group.slug %>" />
+      <button type="submit">Sätt namn</button>
+      <p class="wall-name-hint">Namnet sparas bara i din webbläsare. Inget skickas vidare.</p>
+    </form>
+  <% } %>
+
+  <% const canPost = (mode !== 'verifierade') || identity.verified %>
+  <% if (canPost && displayName) { %>
+    <form id="post-form" class="wall-compose">
+      <div class="wall-compose-meta">
+        Skriver som <strong><%= displayName %></strong><% if (identity.verified && identity.role !== 'frg') { %> <span class="wall-verified-inline" title="Verifierad hos FRG">&#10003;</span><% } %><% if (identity.role === 'frg') { %> <span class="wall-role-tag">FRG</span><% } %>
+      </div>
+      <textarea id="post-body" rows="3" maxlength="2000" placeholder="Skriv ett inlägg"></textarea>
+      <div id="post-image-preview" class="wall-image-preview" hidden>
+        <img id="post-image-thumb" alt="" />
+        <button type="button" id="post-image-remove" class="wall-image-remove" aria-label="Ta bort bild">×</button>
+      </div>
+      <div class="wall-compose-actions">
+        <label for="post-image-input" class="wall-image-add" title="Lägg till bild">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M3 7h4l2-3h6l2 3h4v13H3V7z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"
+                  fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          </svg>
+          <span>Bild</span>
+        </label>
+        <input type="file" id="post-image-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden />
+        <div id="post-error" class="wall-error" hidden></div>
+        <button type="submit" id="post-submit">Posta</button>
+      </div>
+    </form>
+  <% } %>
+
+  <ul id="posts" class="wall-posts"></ul>
 </main>
 
 <footer class="site">
@@ -80,11 +76,39 @@
 
 <script>
 (function () {
-  var list = document.getElementById('messages');
-  if (!list) return;
-  var groupId = list.dataset.groupId;
-  var seen = {};
-  var atBottom = true;
+  var groupId = document.body.dataset.groupId;
+  var groupSlug = document.body.dataset.groupSlug;
+  var myName = document.body.dataset.name || '';
+  var canPost = document.body.dataset.canPost === '1';
+  var myRole = document.body.dataset.role;
+  var myVerified = document.body.dataset.verified === '1';
+  var listEl = document.getElementById('posts');
+  if (!listEl) return;
+
+  function postUrl(postId) {
+    return '/forum/' + encodeURIComponent(groupSlug) + '/p/' + postId;
+  }
+
+  // En reaktion. Som Instagram. Inget val, inget tänk.
+  var LIKE_EMOJI = '❤';
+
+  // SVG-ikoner — kompakta. Outline default, hjärtat fylls vid aktiv.
+  var ICON_HEART_OUTLINE =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+    '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ICON_HEART_FILLED =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+    '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" ' +
+    'fill="currentColor"/></svg>';
+  var ICON_COMMENT =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ICON_SEND =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+    '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function escapeHTML(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -95,118 +119,288 @@
   function fmtTime(iso) {
     try {
       var d = new Date(iso);
-      var p = function (n) { return String(n).padStart(2, '0'); };
       var now = new Date();
+      var diffMs = now - d;
+      var diffMin = Math.floor(diffMs / 60000);
+      if (diffMin < 1) return 'just nu';
+      if (diffMin < 60) return diffMin + ' min sedan';
+      var p = function (n) { return String(n).padStart(2, '0'); };
       var same = d.toDateString() === now.toDateString();
       var time = p(d.getHours()) + ':' + p(d.getMinutes());
-      if (same) return time;
-      return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + time;
-    } catch { return ''; }
+      if (same) return 'idag ' + time;
+      var sameYear = d.getFullYear() === now.getFullYear();
+      var date = p(d.getDate()) + '/' + p(d.getMonth() + 1);
+      if (sameYear) return date + ' ' + time;
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    } catch (e) { return ''; }
   }
 
   function renderBody(raw) {
-    // Escape först, sen markera @mentions
     var esc = escapeHTML(raw);
     esc = esc.replace(/(^|\s)(@[\wÅÄÖåäöÉéÈèÀàÇç][\wÅÄÖåäöÉéÈèÀàÇç._-]{0,30})/g,
       function (_, pre, mention) { return pre + '<span class="forum-mention">' + mention + '</span>'; });
     return esc.replace(/\n/g, '<br />');
   }
 
-  function render(m) {
-    var li = document.createElement('li');
-    var isFrg = m.author_role === 'frg';
-    var isVerified = !!m.verified || isFrg;
-    li.className = 'forum-msg' + (m.deleted_at ? ' forum-msg-deleted' : '') + (isFrg ? ' forum-msg-frg' : '');
-    var verifiedCheck = isVerified && !isFrg
-      ? '<span class="forum-verified" title="Verifierad hos FRG">&#10003;</span>' : '';
-    var frgBadge = isFrg ? '<span class="forum-role-badge">FRG</span>' : '';
-    if (m.deleted_at) {
-      li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + verifiedCheck + frgBadge +
-        '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
-        '<div class="forum-msg-body forum-msg-removed">Borttaget av ' + escapeHTML(m.moderated_by || 'FRG') + '</div>';
-    } else {
-      li.innerHTML =
-        '<div class="forum-msg-head"><span class="forum-msg-author">' + escapeHTML(m.author_name) + '</span>' + verifiedCheck + frgBadge +
-        '<span class="forum-msg-time">' + escapeHTML(fmtTime(m.created_at)) + '</span></div>' +
-        '<div class="forum-msg-body">' + renderBody(m.body) + '</div>';
+  var AVATAR_COLORS = [
+    '#2b5b8a', '#a8571a', '#5b6b3a', '#7a3b6a', '#3b6b6a',
+    '#8a4a2b', '#4a4a8a', '#6b3b3b', '#3b6b4a', '#8a6b2b',
+  ];
+  function avatarHash(name) {
+    var s = String(name || '?');
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function avatarInitials(name) {
+    var parts = String(name || '?').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+    return (parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)).toUpperCase();
+  }
+  function renderAvatar(name, isFrg, size) {
+    var color = isFrg ? '#1E3A5F' : AVATAR_COLORS[avatarHash(name) % AVATAR_COLORS.length];
+    var initials = avatarInitials(name);
+    var shield = isFrg ? '<span class="frg-shield" aria-hidden="true">&#10003;</span>' : '';
+    var cls = 'wall-avatar' + (size === 'sm' ? ' wall-avatar-sm' : '');
+    return '<div class="' + cls + '" style="background:' + color + '" aria-hidden="true">' +
+      escapeHTML(initials) + shield + '</div>';
+  }
+
+  // FRG markeras enbart via avatar-shielden (vit bock på blå cirkel).
+  // Vid namnet visas bara den blå Twitter-bocken för verifierade citizens.
+  function badges(role, verified) {
+    if (verified && role !== 'frg') {
+      return '<span class="forum-verified" title="Verifierad hos FRG">&#10003;</span>';
     }
+    return '';
+  }
+
+  function actionRow(post) {
+    var hearts = (post.reactions || []).find(function (r) { return r.emoji === LIKE_EMOJI; });
+    var users = hearts ? hearts.users : [];
+    var likeCount = hearts ? hearts.count : 0;
+    var mineActive = myName && users.indexOf(myName) !== -1;
+    var likeIcon = mineActive ? ICON_HEART_FILLED : ICON_HEART_OUTLINE;
+    var likeTitle = users.length ? users.join(', ') : 'Gilla';
+    var commentTitle = post.reply_count > 0 ? post.reply_count + ' kommentar' + (post.reply_count === 1 ? '' : 'er') : 'Kommentera';
+    return '<div class="wall-actions">' +
+      '<button type="button" class="wall-icon-btn wall-like' + (mineActive ? ' is-active' : '') + '"' +
+        ' data-id="' + post.id + '"' +
+        ' aria-label="' + escapeHTML(likeTitle) + '"' +
+        ' title="' + escapeHTML(likeTitle) + '"' +
+        (canPost ? '' : ' disabled') + '>' + likeIcon +
+        (likeCount > 0 ? '<span class="wall-icon-count">' + likeCount + '</span>' : '') +
+      '</button>' +
+      '<button type="button" class="wall-icon-btn wall-comment-focus" data-id="' + post.id + '"' +
+        ' aria-label="' + escapeHTML(commentTitle) + '"' +
+        ' title="' + escapeHTML(commentTitle) + '">' + ICON_COMMENT +
+        (post.reply_count > 0 ? '<span class="wall-icon-count">' + post.reply_count + '</span>' : '') +
+      '</button>' +
+    '</div>';
+  }
+
+  function replyLikeRow(reply) {
+    var hearts = (reply.reactions || []).find(function (r) { return r.emoji === LIKE_EMOJI; });
+    var users = hearts ? hearts.users : [];
+    var count = hearts ? hearts.count : 0;
+    var mineActive = myName && users.indexOf(myName) !== -1;
+    var likeWord = '<span class="wall-reply-like-text' + (mineActive ? ' is-active' : '') + '"' +
+      ' data-id="' + reply.id + '"' +
+      (canPost ? '' : ' aria-disabled="true"') + '>' +
+      (mineActive ? 'Gilla' : 'Gilla') +  // texten är samma; aktiv färgar den
+    '</span>';
+    var countSpan = count > 0
+      ? '<span class="wall-reply-like-count" title="' + escapeHTML(users.join(', ')) + '">❤ ' + count + '</span>'
+      : '';
+    return '<span class="wall-reply-actions">' + likeWord + countSpan + '</span>';
+  }
+
+  function renderInlineReply(reply) {
+    var isFrg = reply.author_role === 'frg';
+    var verifiedBadge = badges(reply.author_role, reply.verified);
+    var body = reply.deleted_at
+      ? '<em class="wall-reply-removed">Borttaget av ' + escapeHTML(reply.moderated_by || 'FRG') + '</em>'
+      : renderBody(reply.body);
+    var image = reply.image_path
+      ? '<div class="wall-reply-image"><img src="' + escapeHTML(reply.image_path) + '" alt="" loading="lazy" /></div>'
+      : '';
+    return '<div class="wall-inline-reply">' +
+      renderAvatar(reply.author_name, isFrg, 'sm') +
+      '<div class="wall-inline-reply-text">' +
+        '<span class="wall-inline-reply-author">' + escapeHTML(reply.author_name) + '</span>' + verifiedBadge + ' ' +
+        '<span class="wall-inline-reply-body">' + body + '</span>' +
+        image +
+        '<div class="wall-inline-reply-meta">' +
+          '<span class="wall-inline-reply-time">' + escapeHTML(fmtTime(reply.created_at)) + '</span>' +
+          (reply.deleted_at ? '' : ' · ' + replyLikeRow(reply)) +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderPost(post) {
+    var li = document.createElement('li');
+    var isFrg = post.author_role === 'frg';
+    li.className = 'wall-post' + (post.deleted_at ? ' wall-post-deleted' : '') + (isFrg ? ' wall-post-frg' : '');
+    li.id = 'p-' + post.id;
+    var rolePrefix = isFrg ? '<span class="wall-role-tag">FRG</span> · ' : '';
+    var head =
+      '<div class="wall-post-head">' +
+        renderAvatar(post.author_name, isFrg) +
+        '<div class="wall-post-byline">' +
+          '<div class="wall-post-author">' + escapeHTML(post.author_name) + badges(post.author_role, post.verified) + '</div>' +
+          '<div class="wall-post-time">' + rolePrefix + escapeHTML(fmtTime(post.created_at)) + '</div>' +
+        '</div>' +
+      '</div>';
+    var body = post.deleted_at
+      ? '<div class="wall-post-body wall-post-removed">Borttaget av ' + escapeHTML(post.moderated_by || 'FRG') + '</div>'
+      : (post.body ? '<div class="wall-post-body">' + renderBody(post.body) + '</div>' : '');
+    var image = (!post.deleted_at && post.image_path)
+      ? '<div class="wall-post-image"><img src="' + escapeHTML(post.image_path) + '" alt="" loading="lazy" /></div>'
+      : '';
+    var actions = post.deleted_at ? '' : actionRow(post);
+
+    // Kommentar-sektion: visa SENASTE 1 inline default. Compose är dold.
+    // Klick på 💬 eller "Visa alla X" → expanderar fullständig tråd + input.
+    var comments = '';
+    if (!post.deleted_at) {
+      var recent = post.recent_replies || [];
+      var rest = post.reply_count - recent.length;
+      if (rest > 0) {
+        comments += '<button type="button" class="wall-show-all" data-id="' + post.id + '">' +
+          'Visa alla ' + post.reply_count + ' kommentarer</button>';
+      }
+      comments += '<div class="wall-inline-replies">' + recent.map(renderInlineReply).join('') + '</div>';
+    }
+    var fullThread = '<div class="wall-thread" data-id="' + post.id + '" hidden></div>';
+    li.innerHTML = head + body + image + actions + comments + fullThread;
     return li;
   }
 
-  // Ljudnotis: kort klick-ton när nytt meddelande från någon annan
-  var audioCtx = null;
-  function ping() {
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      var o = audioCtx.createOscillator();
-      var g = audioCtx.createGain();
-      o.connect(g); g.connect(audioCtx.destination);
-      o.type = 'sine';
-      o.frequency.value = 880;
-      g.gain.setValueAtTime(0.001, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-      o.start(); o.stop(audioCtx.currentTime + 0.22);
-    } catch (e) {}
+  function renderFullReply(reply) {
+    return renderInlineReply(reply);
   }
 
-  function isAtBottom(el) {
-    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 60;
+  function commentInputHTML(postId) {
+    if (!canPost) return '';
+    return '<form class="wall-reply-form" data-id="' + postId + '">' +
+      '<input type="text" class="wall-reply-input" maxlength="1000"' +
+        ' placeholder="Kommentera som ' + escapeHTML(myName) + '…" required />' +
+      '<button type="submit" class="wall-icon-btn" aria-label="Skicka">' + ICON_SEND + '</button>' +
+    '</form>';
   }
 
-  var myName = document.body.dataset.name || '';
-  var firstLoad = true;
-
-  function fetchMessages() {
-    fetch('/api/forum/groups/' + groupId + '/messages')
+  function expandAllComments(postId, threadEl, focusInput) {
+    threadEl.innerHTML = '<div class="wall-thread-loading">Hämtar…</div>';
+    fetch('/api/forum/posts/' + postId + '/replies')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var wasAtBottom = atBottom;
-        var addedFromOther = false;
-        (data.messages || []).forEach(function (m) {
-          var key = String(m.id);
-          if (seen[key]) {
-            var existing = document.getElementById('m-' + key);
-            if (existing && m.deleted_at && !existing.classList.contains('forum-msg-deleted')) {
-              var replaced = render(m);
-              replaced.id = 'm-' + key;
-              existing.replaceWith(replaced);
-            }
-            return;
+        var replies = data.replies || [];
+        threadEl.innerHTML =
+          '<div class="wall-thread-list">' + replies.map(renderFullReply).join('') + '</div>' +
+          commentInputHTML(postId);
+        // Dölj inline + show-all-knappen när alla är expanderade
+        var post = document.getElementById('p-' + postId);
+        if (post) {
+          var inline = post.querySelector('.wall-inline-replies');
+          var showAll = post.querySelector('.wall-show-all');
+          if (inline) inline.hidden = true;
+          if (showAll) showAll.hidden = true;
+        }
+        if (focusInput) {
+          var input = threadEl.querySelector('.wall-reply-input');
+          if (input) input.focus();
+        }
+      })
+      .catch(function () { threadEl.innerHTML = '<div class="wall-thread-error">Kunde inte hämta kommentarer.</div>'; });
+  }
+
+  var openThreads = {};
+
+  function fetchPosts() {
+    fetch('/api/forum/groups/' + groupId + '/posts')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var posts = data.posts || [];
+        listEl.innerHTML = '';
+        posts.forEach(function (p) {
+          var node = renderPost(p);
+          listEl.appendChild(node);
+          if (openThreads[p.id]) {
+            var thread = node.querySelector('.wall-thread');
+            thread.hidden = false;
+            expandAllComments(p.id, thread);
           }
-          seen[key] = true;
-          var li = render(m);
-          li.id = 'm-' + key;
-          list.appendChild(li);
-          if (!firstLoad && m.author_name !== myName) addedFromOther = true;
         });
-        if (wasAtBottom) list.scrollTop = list.scrollHeight;
-        if (addedFromOther) ping();
-        firstLoad = false;
+        if (posts.length === 0) {
+          listEl.innerHTML = '<li class="wall-empty">Inget postat ännu.</li>';
+        }
       })
       .catch(function () {});
   }
 
-  list.addEventListener('scroll', function () { atBottom = isAtBottom(list); });
-
+  // Compose — text + valfri bild
   var form = document.getElementById('post-form');
+  var imageInput = document.getElementById('post-image-input');
+  var imagePreview = document.getElementById('post-image-preview');
+  var imageThumb = document.getElementById('post-image-thumb');
+  var imageRemove = document.getElementById('post-image-remove');
+  var pendingImagePath = null;
+
+  function clearImage() {
+    pendingImagePath = null;
+    if (imageInput) imageInput.value = '';
+    if (imagePreview) imagePreview.hidden = true;
+    if (imageThumb) imageThumb.src = '';
+  }
+
+  if (imageInput) {
+    imageInput.addEventListener('change', function () {
+      var file = imageInput.files && imageInput.files[0];
+      if (!file) return;
+      var errEl = document.getElementById('post-error');
+      errEl.hidden = true;
+      // Visa lokal preview omedelbart medan vi laddar upp
+      if (imageThumb) {
+        var reader = new FileReader();
+        reader.onload = function (ev) { imageThumb.src = ev.target.result; imagePreview.hidden = false; };
+        reader.readAsDataURL(file);
+      }
+      var fd = new FormData();
+      fd.append('image', file);
+      fetch('/api/forum/images', { method: 'POST', body: fd })
+        .then(function (r) {
+          if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Uppladdning misslyckades'); });
+          return r.json();
+        })
+        .then(function (data) { pendingImagePath = data.url; })
+        .catch(function (err) {
+          errEl.textContent = err.message;
+          errEl.hidden = false;
+          clearImage();
+        });
+    });
+  }
+  if (imageRemove) imageRemove.addEventListener('click', clearImage);
+
   if (form) {
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      var body = document.getElementById('post-body').value.trim();
-      if (!body) return;
+      var bodyInput = document.getElementById('post-body');
+      var text = bodyInput.value.trim();
+      if (!text && !pendingImagePath) return;
       var errEl = document.getElementById('post-error');
       errEl.hidden = true;
       fetch('/api/forum/groups/' + groupId + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: body })
+        body: JSON.stringify({ body: text, image_path: pendingImagePath })
       }).then(function (r) {
         if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Kunde inte posta'); });
-        document.getElementById('post-body').value = '';
-        atBottom = true;
-        fetchMessages();
+        bodyInput.value = '';
+        clearImage();
+        fetchPosts();
       }).catch(function (err) {
         errEl.textContent = err.message;
         errEl.hidden = false;
@@ -214,8 +408,59 @@
     });
   }
 
-  fetchMessages();
-  setInterval(fetchMessages, 3000);
+  // Klick i flödet:
+  //   - hjärta:   gilla inline (stannar i flödet)
+  //   - gilla på kommentar: gilla inline
+  //   - allt annat på post-kortet (body, bild, kommentar-ikon, "visa alla"): navigera till post-detalj
+  listEl.addEventListener('click', function (e) {
+    var likeBtn = e.target.closest('.wall-like');
+    if (likeBtn && !likeBtn.disabled) {
+      var id = likeBtn.dataset.id;
+      likeBtn.classList.toggle('is-active');
+      likeBtn.innerHTML = likeBtn.classList.contains('is-active') ? ICON_HEART_FILLED : ICON_HEART_OUTLINE;
+      fetch('/api/forum/messages/' + id + '/reactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji: LIKE_EMOJI })
+      }).then(function () { fetchPosts(); }).catch(function () {});
+      return;
+    }
+    var replyLikeText = e.target.closest('.wall-reply-like-text');
+    if (replyLikeText && replyLikeText.getAttribute('aria-disabled') !== 'true') {
+      var rid = replyLikeText.dataset.id;
+      replyLikeText.classList.toggle('is-active');
+      fetch('/api/forum/messages/' + rid + '/reactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji: LIKE_EMOJI })
+      }).then(function () { fetchPosts(); }).catch(function () {});
+      return;
+    }
+    // 💬-ikonen och "Visa alla X kommentarer" navigerar till post-detalj
+    var commentBtn = e.target.closest('.wall-comment-focus');
+    if (commentBtn) {
+      var cid = commentBtn.dataset.id;
+      if (cid) window.location.href = postUrl(cid);
+      return;
+    }
+    var showAllBtn = e.target.closest('.wall-show-all');
+    if (showAllBtn) {
+      var sid = showAllBtn.dataset.id;
+      if (sid) window.location.href = postUrl(sid);
+      return;
+    }
+    // Allt annat klickbart i kortet → navigera till post-detalj
+    var card = e.target.closest('.wall-post');
+    if (!card) return;
+    if (e.target.closest('.wall-actions') || e.target.closest('.wall-reply-actions')) return;
+    var pid = card.id.replace(/^p-/, '');
+    if (pid) window.location.href = postUrl(pid);
+  });
+
+  // (Kommentarer skrivs på post-detaljsidan, inte i flödet längre.)
+
+  fetchPosts();
+  setInterval(fetchPosts, 5000);
 })();
 </script>
 </body>
