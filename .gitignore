@@ -18,8 +18,11 @@ storage/
 kommuner/*/update.json
 kommuner/*/loggbok.jsonl
 kommuner/*/sources.json
-# artiklar/ är kommunens egen data — versionshanteras ej här
+
+# artiklar/ är kommunens egen data och versionshanteras inte. Undantag för
+# arvika som är vårt demo-exempel — den ska följa med releaserna.
 kommuner/*/artiklar/
+!kommuner/arvika/artiklar/
 
 # Node
 node_modules/
