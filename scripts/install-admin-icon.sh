@@ -55,7 +55,29 @@ APPLESCRIPT
 rm -rf "$APP_PATH"
 osacompile -o "$APP_PATH" "$TMP_SCPT"
 rm -f "$TMP_SCPT"
+
+# Byt ut default-scrollikonen mot Trygghetsnod-ikonen
+ICON_SRC="${ROOT_DIR}/trygghetsnod-portal/public/icons/icon-512.png"
+ICON_DEST="${APP_PATH}/Contents/Resources/applet.icns"
+if [[ -f "$ICON_SRC" ]] && command -v sips >/dev/null 2>&1; then
+    if sips -s format icns "$ICON_SRC" --out "$ICON_DEST" >/dev/null 2>&1; then
+        # Tvinga macOS Finder/Dock att läsa om ikon-cachen
+        touch "$APP_PATH"
+        echo "→ Satte Trygghetsnod-ikon"
+    fi
+fi
 echo "→ Skapade ${APP_PATH}"
+
+# Säkerställ att Colima startas automatiskt vid login (brew service).
+# Då hinner docker-runtime värmas upp innan användaren klickar ikonen,
+# vilket sänker click-till-portal från ~15s till ~3s. Vi auto-startar
+# inte stacken — bara runtime — så inga spökfönster av Safari.
+if command -v brew >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
+    if ! brew services list 2>/dev/null | grep -q "^colima.*started"; then
+        echo "→ Aktiverar Colima som auto-start (brew service)…"
+        brew services start colima >/dev/null 2>&1 || echo "  (kunde inte starta colima-service)"
+    fi
+fi
 
 # Rensa eventuell tidigare Login Item-entry — vi använder click-to-start istället
 osascript <<EOF
