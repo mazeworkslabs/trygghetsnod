@@ -3,25 +3,32 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOG_DIR="${ROOT}/storage/logs"
 
-echo "=== Docker (kiwix) ==="
-docker compose -f "$ROOT/compose.yaml" ps 2>/dev/null || echo "(ingen compose-stack uppe)"
-echo
+check_pid() {
+  local name="$1" pid_file="$2"
+  if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+    echo "  $name: pid $(cat "$pid_file") — uppe"
+  else
+    echo "  $name: inte igång"
+  fi
+}
 
-echo "=== Portal ==="
-PID_FILE="${ROOT}/storage/logs/portal.pid"
-if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "node portal: pid $(cat "$PID_FILE") — uppe"
+echo "=== Processer ==="
+check_pid "node portal " "$LOG_DIR/portal.pid"
+check_pid "kiwix-serve" "$LOG_DIR/kiwix.pid"
+if brew services list 2>/dev/null | grep -qE "^postgresql@16[[:space:]]+started"; then
+  echo "  postgres (brew service): started"
 else
-  echo "node portal: inte igång"
+  echo "  postgres (brew service): NOT started"
 fi
 echo
 
 echo "=== Endpoints ==="
-curl -s -o /dev/null -w "  http://localhost:8090 (kiwix)      → %{http_code}\n" http://localhost:8090/ || echo "  kiwix: ingen kontakt"
-curl -s -o /dev/null -w "  http://localhost:8400/healthz     → %{http_code}\n" http://localhost:8400/healthz || echo "  portal: ingen kontakt"
-if docker exec trygghetsnod_postgres pg_isready -U trygghetsnod >/dev/null 2>&1; then
-  echo "  postgres (forum-DB på :5433) → OK"
+curl -s -o /dev/null -w "  http://localhost:8090 (kiwix)     → %{http_code}\n" http://localhost:8090/ || echo "  kiwix: ingen kontakt"
+curl -s -o /dev/null -w "  http://localhost:8400/healthz    → %{http_code}\n" http://localhost:8400/healthz || echo "  portal: ingen kontakt"
+if pg_isready -h localhost -p 5432 -U "$USER" >/dev/null 2>&1; then
+  echo "  postgres (forum-DB på :5432)     → OK"
 else
   echo "  postgres: ingen kontakt"
 fi

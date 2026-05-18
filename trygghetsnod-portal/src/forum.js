@@ -9,9 +9,9 @@ const { Pool } = pg
 export const createForumPool = () => {
   const pool = new Pool({
     host: process.env.PGHOST || 'localhost',
-    port: Number(process.env.PGPORT || 5433),
+    port: Number(process.env.PGPORT || 5432),
     user: process.env.PGUSER || 'trygghetsnod',
-    password: process.env.PGPASSWORD || 'trygghetsnod_local',
+    password: process.env.PGPASSWORD || '',
     database: process.env.PGDATABASE || 'trygghetsnod',
     max: 10,
   })

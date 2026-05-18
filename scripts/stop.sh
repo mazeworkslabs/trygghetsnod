@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
-# Stoppar portal + Kiwix.
+# Stoppar portal + Kiwix. Postgres lämnas igång (brew service).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PID_FILE="${ROOT}/storage/logs/portal.pid"
+LOG_DIR="${ROOT}/storage/logs"
 
-if [[ -f "$PID_FILE" ]]; then
-  PID="$(cat "$PID_FILE")"
-  if kill -0 "$PID" 2>/dev/null; then
-    echo "→ Stoppar portal (pid $PID)…"
-    kill "$PID" || true
-    sleep 1
+stop_pid() {
+  local name="$1" pid_file="$2"
+  if [[ -f "$pid_file" ]]; then
+    PID="$(cat "$pid_file")"
+    if kill -0 "$PID" 2>/dev/null; then
+      echo "→ Stoppar $name (pid $PID)…"
+      kill "$PID" 2>/dev/null || true
+      sleep 1
+    fi
+    rm -f "$pid_file"
   fi
-  rm -f "$PID_FILE"
-fi
+}
 
-# Säkerhetsnät: döda eventuell kvarlevande nodprocess
+stop_pid portal "$LOG_DIR/portal.pid"
+stop_pid kiwix  "$LOG_DIR/kiwix.pid"
+
+# Säkerhetsnät för kvarlevande processer
 pkill -f "node src/server.js" 2>/dev/null || true
+pkill -f "kiwix-serve" 2>/dev/null || true
 
-echo "→ Stoppar Kiwix (docker compose down)…"
-cd "$ROOT"
-docker compose down
-
-echo "Klart."
+echo "Klart. (Postgres körs vidare. Kör 'brew services stop postgresql@16' för att stoppa helt.)"
