@@ -10,7 +10,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-lc</string>
-        <string>/Users/frej/Code/mazeworks/krisnod/scripts/start.sh</string>
+        <string>__ROOT__/scripts/start.sh</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -18,7 +18,7 @@
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>KOMMUN</key>
-        <string>arvika</string>
+        <string>__KOMMUN__</string>
     </dict>
 
     <key>RunAtLoad</key>
@@ -28,9 +28,9 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/Users/frej/Code/mazeworks/krisnod/storage/logs/launchagent.out</string>
+    <string>__ROOT__/storage/logs/launchagent.out</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/frej/Code/mazeworks/krisnod/storage/logs/launchagent.err</string>
+    <string>__ROOT__/storage/logs/launchagent.err</string>
 </dict>
 </plist>
