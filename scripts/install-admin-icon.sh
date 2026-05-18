@@ -14,13 +14,26 @@ HEALTH_URL="${HEALTH_URL:-http://localhost:8400/healthz}"
 
 mkdir -p "$APP_DIR"
 
-# AppleScript-källa
+# AppleScript-källa.
+#
+# När man klickar på ikonen:
+#   1. Startar Trygghetsnod-stacken (idempotent — gör inget om den redan kör)
+#   2. Väntar upp till 90s på att portalen ska svara (täcker kall Colima-start)
+#   3. Öppnar Safari på admin-sidan
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+START_SCRIPT="${ROOT_DIR}/scripts/start.sh"
 TMP_SCPT="$(mktemp -t trygghetsnod-admin.XXXXXX).applescript"
 cat > "$TMP_SCPT" <<APPLESCRIPT
 on run
     set healthURL to "${HEALTH_URL}"
     set adminURL to "${ADMIN_URL}"
-    repeat 60 times
+    set startScript to "${START_SCRIPT}"
+    -- Starta stacken i bakgrunden (no-op om redan uppe)
+    try
+        do shell script "zsh -lc " & quoted form of (quoted form of startScript) & " > /tmp/trygghetsnod-startup.log 2>&1 &"
+    end try
+    -- Vänta upp till 90s på portalen (Colima kallstart tar ~12-15s)
+    repeat 90 times
         try
             do shell script "curl -fsS " & quoted form of healthURL & " >/dev/null 2>&1"
             exit repeat
@@ -44,21 +57,21 @@ osacompile -o "$APP_PATH" "$TMP_SCPT"
 rm -f "$TMP_SCPT"
 echo "→ Skapade ${APP_PATH}"
 
-# Registrera som Login Item (rensar tidigare entry först)
+# Rensa eventuell tidigare Login Item-entry — vi använder click-to-start istället
 osascript <<EOF
 tell application "System Events"
     try
         delete (every login item whose name is "${APP_NAME}")
     end try
-    make login item at end with properties {path:"${APP_PATH}", hidden:false}
 end tell
 EOF
-echo "→ Registrerade ${APP_NAME} som Login Item"
 
 echo
-echo "Klart. Vid nästa inloggning:"
-echo "  1. LaunchAgent startar Trygghetsnod-stacken"
-echo "  2. ${APP_NAME} öppnar Safari på ${ADMIN_URL}"
+echo "Klart. Användarflöde:"
+echo "  1. Klicka på '${APP_NAME}' i Dock"
+echo "  2. Stacken startas (1–15 sek beroende på om Colima redan kör)"
+echo "  3. Safari öppnas på ${ADMIN_URL}"
 echo
-echo "Lägg till i Dock genom att dra ${APP_PATH} till Dock-en."
-echo "Manuell körning: open '${APP_PATH}'"
+echo "Lägg till i Dock: dra ${APP_PATH} till Dock-en."
+echo "Bonus — Safari Web App-läge utan browser-chrome:"
+echo "  Öppna admin i Safari → File → Add to Dock → bekräfta → done."
